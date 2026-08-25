@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-';
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -23,23 +23,29 @@ async function scrapePSXPortal(symbol, defaultPrice) {
   let volume = 1500000;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
     const res = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const html = await res.text();
 
-      // Extract Current Price
+      // Price Match
       const priceMatch = html.match(/class="quote__price"[^>]*>\s*(?:Rs\.\s*)?([\d,]+\.?\d*)/i) || html.match(/data-price="([\d,]+\.?\d*)"/i);
       if (priceMatch && priceMatch[1]) {
         const parsed = parseFloat(priceMatch[1].replace(/,/g, ''));
         if (parsed > 0) price = parsed;
       }
 
-      // Extract Change
+      // Change Match
       const changeMatch = html.match(/class="quote__change"[^>]*>\s*([+-]?[\d,]+\.?\d*)\s*\((.*?)\)/i);
       if (changeMatch) {
         if (changeMatch[1]) change = parseFloat(changeMatch[1].replace(/,/g, ''));
@@ -49,7 +55,7 @@ async function scrapePSXPortal(symbol, defaultPrice) {
         }
       }
 
-      // Extract Volume
+      // Volume Match
       const volMatch = html.match(/Volume[:\s]*<\/b>\s*([\d,]+)/i);
       if (volMatch && volMatch[1]) {
         volume = parseInt(volMatch[1].replace(/,/g, ''), 10);
@@ -58,7 +64,7 @@ async function scrapePSXPortal(symbol, defaultPrice) {
       console.log(`  [PSX Scraped] ${symbol} -> PKR ${price} (Change: ${change}, ${changePct}%)`);
     }
   } catch (err) {
-    console.log(`  [PSX Portal Note] ${symbol} using exact baseline PKR ${price}`);
+    console.log(`  [PSX Portal Note] ${symbol} using exact baseline PKR ${price} (${err.message})`);
   }
 
   const prevClose = Number((price - change).toFixed(2));
@@ -72,7 +78,7 @@ async function scrapePSXPortal(symbol, defaultPrice) {
 }
 
 async function runIngestion() {
-  console.log(`\n🇵🇰 [${new Date().toLocaleTimeString()}] Running PSX Real-Time Price Sync Pipeline...`);
+  console.log(`\n🇵🇰 [${new Date().toLocaleTimeString()}] Executing PSX Hardened Real-Time Price Sync Pipeline...`);
 
   const companiesBody = TICKERS_CONFIG.map(item => ({
     ticker: item.ticker,
@@ -83,29 +89,37 @@ async function runIngestion() {
 
   const records = [];
   for (const cfg of TICKERS_CONFIG) {
-    const stats = await scrapePSXPortal(cfg.ticker, cfg.basePrice);
-    records.push({
-      ticker: cfg.ticker,
-      price: stats.price,
-      previous_close: stats.previous_close,
-      change: stats.change,
-      change_percent: stats.change_percent,
-      volume: stats.volume,
-      pe_ratio: cfg.pe,
-      pb_ratio: cfg.pb,
-      roe: cfg.roe,
-      dividend_yield: cfg.div,
-      updated_at: new Date().toISOString()
-    });
+    try {
+      const stats = await scrapePSXPortal(cfg.ticker, cfg.basePrice);
+      records.push({
+        ticker: cfg.ticker,
+        price: stats.price,
+        previous_close: stats.previous_close,
+        change: stats.change,
+        change_percent: stats.change_percent,
+        volume: stats.volume,
+        pe_ratio: cfg.pe,
+        pb_ratio: cfg.pb,
+        roe: cfg.roe,
+        dividend_yield: cfg.div,
+        updated_at: new Date().toISOString()
+      });
+    } catch (tickerErr) {
+      console.warn(`  ⚠️ Ticker ${cfg.ticker} exception caught:`, tickerErr.message);
+    }
   }
 
-  const { error: compErr } = await supabase.from('companies').upsert(companiesBody, { onConflict: 'ticker' });
-  if (compErr) console.log('Company Notice:', compErr.message);
+  try {
+    const { error: compErr } = await supabase.from('companies').upsert(companiesBody, { onConflict: 'ticker' });
+    if (compErr) console.log('Company Notice:', compErr.message);
 
-  const { error: priceErr } = await supabase.from('live_prices').upsert(records, { onConflict: 'ticker' });
-  if (priceErr) console.log('Live Prices Notice:', priceErr.message);
+    const { error: priceErr } = await supabase.from('live_prices').upsert(records, { onConflict: 'ticker' });
+    if (priceErr) console.log('Live Prices Notice:', priceErr.message);
 
-  console.log('✅ PSX Prices successfully synced to Supabase `live_prices` table!');
+    console.log('✅ PSX Prices successfully synced to Supabase `live_prices` table!');
+  } catch (dbErr) {
+    console.error('Supabase Database Sync Error:', dbErr.message);
+  }
 }
 
 async function main() {
