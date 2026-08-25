@@ -1,0 +1,10 @@
+# Tell Vercel to ignore legacy Python backend configuration
+requirements.txt
+requirements-dev.txt
+requirements-minimal.txt
+pyproject.toml
+Dockerfile
+docker-compose.yml
+venv/
+tests/
+scripts/*.py
