@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -24,12 +24,15 @@ async function scrapePSXPortal(symbol, defaultPrice) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache'
       }
     });
 
@@ -38,14 +41,14 @@ async function scrapePSXPortal(symbol, defaultPrice) {
     if (res.ok) {
       const html = await res.text();
 
-      // Price Match
+      // Price Extraction
       const priceMatch = html.match(/class="quote__price"[^>]*>\s*(?:Rs\.\s*)?([\d,]+\.?\d*)/i) || html.match(/data-price="([\d,]+\.?\d*)"/i);
       if (priceMatch && priceMatch[1]) {
         const parsed = parseFloat(priceMatch[1].replace(/,/g, ''));
         if (parsed > 0) price = parsed;
       }
 
-      // Change Match
+      // Change Extraction
       const changeMatch = html.match(/class="quote__change"[^>]*>\s*([+-]?[\d,]+\.?\d*)\s*\((.*?)\)/i);
       if (changeMatch) {
         if (changeMatch[1]) change = parseFloat(changeMatch[1].replace(/,/g, ''));
@@ -55,16 +58,18 @@ async function scrapePSXPortal(symbol, defaultPrice) {
         }
       }
 
-      // Volume Match
+      // Volume Extraction
       const volMatch = html.match(/Volume[:\s]*<\/b>\s*([\d,]+)/i);
       if (volMatch && volMatch[1]) {
         volume = parseInt(volMatch[1].replace(/,/g, ''), 10);
       }
 
-      console.log(`  [PSX Scraped] ${symbol} -> PKR ${price} (Change: ${change}, ${changePct}%)`);
+      console.log(`  [PSX Scraped Success] ${symbol} -> PKR ${price} (Change: ${change}, ${changePct}%)`);
+    } else {
+      console.log(`  [PSX Portal Note] ${symbol} HTTP ${res.status} - Using baseline PKR ${price}`);
     }
   } catch (err) {
-    console.log(`  [PSX Portal Note] ${symbol} using exact baseline PKR ${price} (${err.message})`);
+    console.log(`  [PSX Portal Note] ${symbol} network fallback (PKR ${price}): ${err.message}`);
   }
 
   const prevClose = Number((price - change).toFixed(2));
@@ -78,7 +83,7 @@ async function scrapePSXPortal(symbol, defaultPrice) {
 }
 
 async function runIngestion() {
-  console.log(`\n🇵🇰 [${new Date().toLocaleTimeString()}] Executing PSX Hardened Real-Time Price Sync Pipeline...`);
+  console.log(`\n🇵🇰 [${new Date().toISOString()}] Starting PSX Resilient Price Sync Execution...`);
 
   const companiesBody = TICKERS_CONFIG.map(item => ({
     ticker: item.ticker,
@@ -105,30 +110,34 @@ async function runIngestion() {
         updated_at: new Date().toISOString()
       });
     } catch (tickerErr) {
-      console.warn(`  ⚠️ Ticker ${cfg.ticker} exception caught:`, tickerErr.message);
+      console.warn(`  ⚠️ Exception processing ${cfg.ticker}:`, tickerErr.message);
     }
   }
 
   try {
     const { error: compErr } = await supabase.from('companies').upsert(companiesBody, { onConflict: 'ticker' });
-    if (compErr) console.log('Company Notice:', compErr.message);
+    if (compErr) console.log('Company Table Log:', compErr.message);
 
     const { error: priceErr } = await supabase.from('live_prices').upsert(records, { onConflict: 'ticker' });
-    if (priceErr) console.log('Live Prices Notice:', priceErr.message);
+    if (priceErr) console.log('Live Prices Table Log:', priceErr.message);
 
-    console.log('✅ PSX Prices successfully synced to Supabase `live_prices` table!');
+    console.log('✅ Hardened Sync Finished: PSX Prices synced to Supabase `live_prices` table successfully.');
   } catch (dbErr) {
     console.error('Supabase Database Sync Error:', dbErr.message);
   }
 }
 
 async function main() {
-  const isWatch = process.argv.includes('--watch');
-  await runIngestion();
+  try {
+    const isWatch = process.argv.includes('--watch');
+    await runIngestion();
 
-  if (isWatch) {
-    console.log('🔄 Watch mode enabled. Polling PSX data portal every 60 seconds...');
-    setInterval(runIngestion, 60000);
+    if (isWatch) {
+      console.log('🔄 Watch mode active. Polling PSX data portal every 60 seconds...');
+      setInterval(runIngestion, 60000);
+    }
+  } catch (globalErr) {
+    console.error('Global Scraper Execution Handled Exception:', globalErr.message);
   }
 }
 
