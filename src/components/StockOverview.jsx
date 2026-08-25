@@ -7,7 +7,7 @@ import {
   BarChart3, DollarSign, Layers, CheckCircle2, BookmarkPlus,
   ChevronLeft, ChevronRight, LayoutGrid, Table2, Eye,
   ArrowUpRight, AlertTriangle, Compass, Target, Gauge, Zap,
-  Info, CheckCircle, HelpCircle
+  Info, CheckCircle, HelpCircle, Wallet, ShieldAlert, Clock, TrendingDown as TrendDown
 } from 'lucide-react';
 import { evaluateStockAlgorithm } from '../services/scoringAlgorithm';
 
@@ -370,14 +370,16 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
 
           <div>
             <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>P/E & P/B Multiples</span>
-            <span style={{ color: '#06b6d4', fontWeight: 800, fontSize: '16px' }}>{stock.pe_ratio || 6.5}x</span>
-            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>P/B: {stock.pb_ratio || 1.1}x</span>
+            <span style={{ color: '#06b6d4', fontWeight: 800, fontSize: '16px' }}>
+              {stock.pe_ratio > 0 ? `${stock.pe_ratio}x` : <span style={{ color: '#64748b', fontSize: '12px' }}>N/A</span>}
+            </span>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>P/B: {stock.pb_ratio > 0 ? `${stock.pb_ratio}x` : 'N/A'}</span>
           </div>
 
           <div>
             <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Dividend & ROE</span>
-            <span style={{ color: '#34d399', fontWeight: 800, fontSize: '16px' }}>{stock.dividend_yield || 5.0}%</span>
-            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>ROE: {stock.roe || 18.0}%</span>
+            <span style={{ color: '#34d399', fontWeight: 800, fontSize: '16px' }}>{stock.dividend_yield >= 0 ? `${stock.dividend_yield}%` : 'N/A'}</span>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>ROE: {stock.roe > 0 ? `${stock.roe}%` : 'N/A'}</span>
           </div>
 
           <div>
@@ -419,10 +421,120 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
 
         </div>
 
+        {/* ⚠️ Penny Stock Warning Banner */}
+        {algo?.isPennyStock && (
+          <div style={{
+            marginTop: '16px',
+            background: 'rgba(249, 115, 22, 0.1)',
+            border: '1px solid rgba(249, 115, 22, 0.4)',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px'
+          }}>
+            <ShieldAlert style={{ width: '20px', height: '20px', color: '#f97316', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#fb923c', marginBottom: '4px' }}>
+                ⚠️ High Volatility Speculative Asset — Price below PKR 5.00
+              </div>
+              <p style={{ fontSize: '12px', color: '#fdba74', margin: 0, lineHeight: 1.5 }}>
+                This stock is classified as a <b>Penny Stock</b> (PKR {price.toFixed(2)} per share). PSX penny stocks are prone to extreme intraday price swings, circuit breaker halts, and thin exit liquidity.
+                Algorithmic score has been capped at <b>65/100</b> regardless of volume. <b>Risk only capital you can afford to lose entirely.</b>
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* ================================================================
-          3. DYNAMIC PROS (REASONS TO BUY) VS CONS (RISK FACTORS)
+          3. TRADE STRATEGY & CAPITAL ALLOCATION PANEL
+      ================================================================ */}
+      <div style={{ background: '#0f172a', padding: '20px 24px', borderRadius: '20px', border: '1px solid #1e293b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid #1e293b' }}>
+          <Target style={{ width: '16px', height: '16px', color: '#6366f1' }} />
+          <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+            Trade Strategy & Capital Allocation
+          </h3>
+          {algo?.isPennyStock && (
+            <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '9999px', background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.4)' }}>
+              ⚠️ SPECULATIVE
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
+          
+          {/* Target Price */}
+          <div style={{ background: 'rgba(99, 102, 241, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <TrendingUp style={{ width: '13px', height: '13px', color: '#818cf8' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resistance Target</span>
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#a5b4fc' }}>
+              PKR {algo?.tradeStrategy?.targetPrice?.toLocaleString() || '—'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, marginTop: '3px' }}>
+              +{algo?.tradeStrategy?.upsidePct || 0}% Upside
+            </div>
+          </div>
+
+          {/* Stop-Loss */}
+          <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <ShieldAlert style={{ width: '13px', height: '13px', color: '#f87171' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stop-Loss Level</span>
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: '#fca5a5' }}>
+              PKR {algo?.tradeStrategy?.stopLoss?.toLocaleString() || '—'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#f43f5e', fontWeight: 700, marginTop: '3px' }}>
+              -{algo?.tradeStrategy?.downsidePct || 0}% Max Downside
+            </div>
+          </div>
+
+          {/* Risk/Reward Ratio */}
+          <div style={{ background: 'rgba(6, 182, 212, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(6, 182, 212, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <Gauge style={{ width: '13px', height: '13px', color: '#22d3ee' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Risk / Reward</span>
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: (algo?.tradeStrategy?.rrRatio >= 1.5) ? '#34d399' : (algo?.tradeStrategy?.rrRatio >= 1.0) ? '#fbbf24' : '#f87171' }}>
+              {algo?.tradeStrategy?.rrRatio >= 1 ? algo?.tradeStrategy?.rrRatio : '< 1'}:1
+            </div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginTop: '3px' }}>
+              {algo?.tradeStrategy?.rrRatio >= 1.5 ? '✅ Favourable Setup' : algo?.tradeStrategy?.rrRatio >= 1.0 ? '⚖️ Marginal Setup' : '❌ Unfavourable Setup'}
+            </div>
+          </div>
+
+          {/* Portfolio Allocation */}
+          <div style={{ background: 'rgba(16, 185, 129, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <Wallet style={{ width: '13px', height: '13px', color: '#34d399' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Portfolio Allocation</span>
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#6ee7b7', lineHeight: 1.3 }}>
+              {algo?.tradeStrategy?.allocation || '—'}
+            </div>
+          </div>
+
+          {/* Time Horizon */}
+          <div style={{ background: 'rgba(245, 158, 11, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <Clock style={{ width: '13px', height: '13px', color: '#fbbf24' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Time Horizon</span>
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#fde68a', lineHeight: 1.3 }}>
+              {algo?.tradeStrategy?.horizon || '—'}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ================================================================
+          4. DYNAMIC PROS (REASONS TO BUY) VS CONS (RISK FACTORS)
       ================================================================ */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
@@ -471,7 +583,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       </div>
 
       {/* ================================================================
-          4. 6-MONTH CHART & ALGORITHMIC SUB-SCORE BREAKDOWN
+          5. 6-MONTH CHART & ALGORITHMIC SUB-SCORE BREAKDOWN
       ================================================================ */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
