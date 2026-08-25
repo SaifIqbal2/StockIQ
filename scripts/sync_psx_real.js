@@ -1,9 +1,14 @@
+import WebSocket from 'ws';
+globalThis.WebSocket = WebSocket;
+
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-';
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false }
+});
 
 const TICKERS_CONFIG = [
   { ticker: 'LUCK', name: 'Lucky Cement Limited', sector: 'Cement', basePrice: 442.69, pe: 6.8, pb: 1.1, roe: 18.5, div: 4.2 },

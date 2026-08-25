@@ -19,8 +19,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Project Dependencies
-        run: npm install @supabase/supabase-js
+      - name: Install Dependencies
+        run: npm install ws axios cheerio @supabase/supabase-js
 
       - name: Execute Hardened PSX Real-Time Scraper & Sync
         env:
