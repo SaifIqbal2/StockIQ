@@ -1,0 +1,30 @@
+name: PSX Live Prices Automated Sync
+
+on:
+  schedule:
+    # PSX Trading Hours: Mon-Fri 9:00 AM - 4:00 PM PKT (UTC 4:00 AM - 11:00 AM)
+    - cron: '*/5 4-11 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  sync-psx-prices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm ci
+
+      - name: Run PSX Real-Time Data Ingestion Script
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+        run: node scripts/sync_psx_real.js

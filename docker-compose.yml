@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: stockiq_postgres
+    environment:
+      POSTGRES_USER: stockiq
+      POSTGRES_PASSWORD: stockiq123
+      POSTGRES_DB: stockiq
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stockiq_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: stockiq_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stockiq_network
+
+  app:
+    build: .
+    container_name: stockiq_app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://stockiq:stockiq123@postgres:5432/stockiq
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=False
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./src:/app/src
+    networks:
+      - stockiq_network
+    restart: unless-stopped
+
+  # Optional: Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: stockiq_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - stockiq_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+
+networks:
+  stockiq_network:
+    driver: bridge
