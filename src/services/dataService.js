@@ -8,7 +8,7 @@ export async function fetchTopScoringStocks() {
   }
 
   try {
-    // 1. Fetch all companies without limits
+    // 1. Fetch all companies
     const { data: companies, error: compErr } = await supabase
       .from('companies')
       .select('*')
@@ -18,7 +18,7 @@ export async function fetchTopScoringStocks() {
       return MOCK_COMPANIES;
     }
 
-    // 2. Fetch all live prices
+    // 2. Fetch all live prices with 12 attributes
     const { data: prices } = await supabase
       .from('live_prices')
       .select('*');
@@ -30,14 +30,23 @@ export async function fetchTopScoringStocks() {
       });
     }
 
-    // Merge company records with live prices
+    // Merge company records with complete 12-attribute live prices
     const merged = companies.map((c, idx) => {
       const live = priceMap[c.ticker] || {};
       const fallback = MOCK_COMPANIES[idx % MOCK_COMPANIES.length];
 
       const price = live.price !== undefined && live.price !== null ? Number(live.price) : fallback.price;
+      const previous_close = live.previous_close !== undefined && live.previous_close !== null ? Number(live.previous_close) : (fallback.price - fallback.change);
+      const open_price = live.open_price !== undefined && live.open_price !== null ? Number(live.open_price) : previous_close;
       const change = live.change !== undefined && live.change !== null ? Number(live.change) : fallback.change;
       const changePercent = live.change_percent !== undefined && live.change_percent !== null ? Number(live.change_percent) : fallback.changePercent;
+      
+      const volume = live.volume !== undefined && live.volume !== null ? Number(live.volume) : (typeof fallback.volume === 'string' ? Number(fallback.volume.replace(/,/g, '')) : fallback.volume);
+      const day_high = live.day_high !== undefined && live.day_high !== null ? Number(live.day_high) : Math.max(price, open_price, price * 1.01);
+      const day_low = live.day_low !== undefined && live.day_low !== null ? Number(live.day_low) : Math.min(price, open_price, price * 0.99);
+      const fifty_two_week_high = live.fifty_two_week_high !== undefined && live.fifty_two_week_high !== null ? Number(live.fifty_two_week_high) : price * 1.25;
+      const fifty_two_week_low = live.fifty_two_week_low !== undefined && live.fifty_two_week_low !== null ? Number(live.fifty_two_week_low) : price * 0.75;
+
       const pe_ratio = live.pe_ratio ? Number(live.pe_ratio) : fallback.pe_ratio;
       const pb_ratio = live.pb_ratio ? Number(live.pb_ratio) : fallback.pb_ratio;
       const roe = live.roe ? Number(live.roe) : fallback.roe;
@@ -50,13 +59,20 @@ export async function fetchTopScoringStocks() {
         sector: c.sector || 'General',
         market_cap: c.market_cap || fallback.market_cap,
         price,
+        previous_close,
+        open_price,
         change,
         changePercent,
+        volume,
+        day_high,
+        day_low,
+        fifty_two_week_high,
+        fifty_two_week_low,
         pe_ratio,
         pb_ratio,
         roe,
         dividend_yield,
-        description: c.description || `${c.name} is a listed public company on the Pakistan Stock Exchange (${c.sector || 'General'}).`,
+        description: c.description || `${c.name} is a leading listed public company on the Pakistan Stock Exchange (${c.sector || 'General'}).`,
         financials: fallback.financials,
         priceHistory: fallback.priceHistory
       };

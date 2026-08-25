@@ -5,16 +5,20 @@ import {
 import { 
   TrendingUp, TrendingDown, Sparkles, ShieldCheck, Activity, Award, 
   BarChart3, DollarSign, Layers, CheckCircle2, BookmarkPlus,
-  ChevronLeft, ChevronRight, LayoutGrid, Table2, Eye
+  ChevronLeft, ChevronRight, LayoutGrid, Table2, Eye,
+  ArrowUpRight, AlertTriangle, Compass, Target, Gauge, Zap
 } from 'lucide-react';
 import { computeStockIQScore, getStrategyVerdict } from '../services/calculations';
+import { analyzeStockStrategy } from '../services/strategyEngine';
 
 export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, onAddToWatchlist }) {
   const stock = selectedStock || stocks[0];
   const scores = computeStockIQScore(stock);
-  const verdictDetails = scores.verdictDetails || getStrategyVerdict(scores.overall);
+  const strategyAnalysis = analyzeStockStrategy(stock);
+  const verdictDetails = strategyAnalysis?.verdict || getStrategyVerdict(scores.overall);
 
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
+  const [metricsTab, setMetricsTab] = useState('summary'); // 'summary' | 'psx_deep'
   const carouselRef = useRef(null);
 
   const scrollCarousel = (dir) => {
@@ -33,11 +37,33 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
     { name: 'Dividend Yield Score', score: scores.dividend, icon: BarChart3, color: '#34d399', barColor: '#10b981' },
   ];
 
+  const m = strategyAnalysis?.metrics || {
+    price: stock.price,
+    open: stock.open_price || stock.price,
+    high: stock.day_high || (stock.price * 1.01),
+    low: stock.day_low || (stock.price * 0.99),
+    ldcp: stock.previous_close || stock.price,
+    volume: stock.volume || 1000000,
+    high52: stock.fifty_two_week_high || (stock.price * 1.25),
+    low52: stock.fifty_two_week_low || (stock.price * 0.75),
+    pe: stock.pe_ratio,
+    pb: stock.pb_ratio,
+    roe: stock.roe,
+    divYield: stock.dividend_yield,
+    change: stock.change,
+    changePercent: stock.changePercent
+  };
+
+  // Day range % position
+  const dayRangePos = m.high > m.low ? Math.min(100, Math.max(0, Math.round(((m.price - m.low) / (m.high - m.low)) * 100))) : 50;
+  // 52-week range % position
+  const yearRangePos = m.high52 > m.low52 ? Math.min(100, Math.max(0, Math.round(((m.price - m.low52) / (m.high52 - m.low52)) * 100))) : 50;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* ================================================================
-          TOP CAROUSEL SELECTOR
+          1. TOP PSX STOCKS CAROUSEL / UNIVERSE SELECTOR
       ================================================================ */}
       <div style={{ background: '#0f172a', padding: '16px 20px', borderRadius: '16px', border: '1px solid #1e293b' }}>
         
@@ -123,7 +149,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
                   key={item.ticker}
                   onClick={() => onSelectStock(item)}
                   style={{
-                    minWidth: '200px',
+                    minWidth: '210px',
                     flexShrink: 0,
                     background: isSelected ? '#1e293b' : '#090d16',
                     border: isSelected ? '1px solid #10b981' : '1px solid #1e293b',
@@ -245,118 +271,237 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       </div>
 
       {/* ================================================================
-          MAIN STOCK DETAIL LAYOUT (2-Column Grid)
+          2. MAIN ACTIVE STOCK PANEL: HERO & 12-ATTRIBUTE DATA GRID
       ================================================================ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ background: '#0f172a', padding: '24px', borderRadius: '20px', border: '1px solid #1e293b' }}>
         
-        {/* LEFT: Stock Header + Metric Grid + Chart */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-          {/* Hero Card */}
-          <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', paddingBottom: '14px', borderBottom: '1px solid #1e293b' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', margin: 0 }}>{stock.name}</h1>
-                  <span style={{ padding: '3px 10px', fontSize: '12px', fontWeight: 800, background: '#1e293b', color: '#10b981', borderRadius: '8px', border: '1px solid #334155' }}>
-                    {stock.ticker}
-                  </span>
-                </div>
-                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '5px', marginBottom: 0, maxWidth: '580px' }}>{stock.description}</p>
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  onClick={() => onAddToWatchlist(stock)}
-                  style={{ background: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', padding: '7px 10px', borderRadius: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600 }}
-                  title="Save to Watchlist"
-                >
-                  <BookmarkPlus style={{ width: '15px', height: '15px' }} /> Watch
-                </button>
-                <button
-                  onClick={() => onOpenAI(stock)}
-                  style={{ background: 'linear-gradient(to right, #059669, #0d9488)', border: 'none', color: '#ffffff', padding: '8px 16px', borderRadius: '9px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)' }}
-                >
-                  <Sparkles style={{ width: '14px', height: '14px', color: '#fde047' }} />
-                  AI Analyst
-                </button>
-              </div>
-            </div>
-
-            {/* Metric Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '14px', background: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155', marginTop: '16px' }}>
-              
-              <div>
-                <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>StockIQ Rating</span>
-                <span style={{ color: '#ffffff', fontWeight: 900, fontSize: '22px' }}>{scores.overall} <span style={{ fontSize: '11px', color: '#64748b' }}>/100</span></span>
-                <span style={{ display: 'inline-block', fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '9999px', border: '1px solid', color: verdictDetails.hexColor, borderColor: verdictDetails.hexColor, background: '#0f172a', marginTop: '3px' }}>
-                  {verdictDetails.label}
-                </span>
-              </div>
-
-              <div>
-                <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Share Price</span>
-                <span style={{ color: '#ffffff', fontWeight: 800, fontSize: '16px' }}>PKR {Number(stock.price).toLocaleString()}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '10px', fontWeight: 700, color: stock.change >= 0 ? '#10b981' : '#f43f5e', marginTop: '2px' }}>
-                  {stock.change >= 0 ? <TrendingUp style={{ width: '10px', height: '10px' }} /> : <TrendingDown style={{ width: '10px', height: '10px' }} />}
-                  {stock.change >= 0 ? '+' : ''}{stock.change} ({stock.changePercent}%)
-                </span>
-              </div>
-
-              <div>
-                <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>P/E Ratio</span>
-                <span style={{ color: '#06b6d4', fontWeight: 800, fontSize: '16px' }}>{stock.pe_ratio}x</span>
-                <span style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '2px' }}>P/B: {stock.pb_ratio}x</span>
-              </div>
-
-              <div>
-                <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Dividend Yield</span>
-                <span style={{ color: '#10b981', fontWeight: 800, fontSize: '16px' }}>{stock.dividend_yield}%</span>
-                <span style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '2px' }}>ROE: {stock.roe}%</span>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Price Chart */}
-          <div style={{ background: '#0f172a', padding: '18px 20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '7px', margin: 0 }}>
-                <Activity style={{ width: '15px', height: '15px', color: '#10b981' }} />
-                6-Month Price Trend (PKR)
-              </h3>
-              <span style={{ fontSize: '11px', color: '#94a3b8', background: '#1e293b', padding: '3px 9px', borderRadius: '7px', border: '1px solid #334155' }}>
-                PSX Market Data
+        {/* Top Header Row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', paddingBottom: '16px', borderBottom: '1px solid #1e293b' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#ffffff', margin: 0 }}>{stock.name}</h1>
+              <span style={{ padding: '3px 10px', fontSize: '13px', fontWeight: 800, background: '#1e293b', color: '#10b981', borderRadius: '8px', border: '1px solid #334155' }}>
+                {stock.ticker}
+              </span>
+              <span style={{ fontSize: '12px', color: '#94a3b8', background: '#1e293b', padding: '3px 10px', borderRadius: '6px', border: '1px solid #334155' }}>
+                {stock.sector || 'General'}
               </span>
             </div>
 
-            <div style={{ width: '100%', height: '200px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stock.priceHistory || []}>
-                  <defs>
-                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={verdictDetails.hexColor} stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor={verdictDetails.hexColor} stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#64748b" tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#fff', fontSize: '12px' }}
-                    formatter={(val) => [`PKR ${val}`, 'Price']}
-                  />
-                  <Area type="monotone" dataKey="price" stroke={verdictDetails.hexColor} strokeWidth={2.5} fillOpacity={1} fill="url(#priceGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
+            {/* Selected Strategy Match Tag */}
+            {strategyAnalysis && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: strategyAnalysis.strategy.color, background: strategyAnalysis.strategy.badgeBg, padding: '4px 10px', borderRadius: '8px', border: `1px solid ${strategyAnalysis.strategy.color}40` }}>
+                  <Compass style={{ width: '13px', height: '13px' }} />
+                  {strategyAnalysis.strategy.name}
+                </span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  {strategyAnalysis.strategy.tagline}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => onAddToWatchlist(stock)}
+              style={{ background: '#1e293b', border: '1px solid #334155', color: '#cbd5e1', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}
+              title="Save to Watchlist"
+            >
+              <BookmarkPlus style={{ width: '16px', height: '16px' }} /> Watch
+            </button>
+            <button
+              onClick={() => onOpenAI(stock)}
+              style={{ background: 'linear-gradient(to right, #059669, #0d9488)', border: 'none', color: '#ffffff', padding: '9px 18px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)' }}
+            >
+              <Sparkles style={{ width: '15px', height: '15px', color: '#fde047' }} />
+              AI Analyst
+            </button>
+          </div>
+        </div>
+
+        {/* 12-Attribute PSX Trading Data Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', background: '#1e293b', padding: '16px 20px', borderRadius: '14px', border: '1px solid #334155', marginTop: '18px' }}>
+          
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Current Price</span>
+            <span style={{ color: '#ffffff', fontWeight: 900, fontSize: '20px' }}>PKR {Number(m.price).toLocaleString()}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 700, color: m.change >= 0 ? '#10b981' : '#f43f5e', marginTop: '2px' }}>
+              {m.change >= 0 ? <TrendingUp style={{ width: '12px', height: '12px' }} /> : <TrendingDown style={{ width: '12px', height: '12px' }} />}
+              {m.change >= 0 ? '+' : ''}{m.change} ({m.changePercent}%)
+            </span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>LDCP / Prev Close</span>
+            <span style={{ color: '#e2e8f0', fontWeight: 800, fontSize: '16px' }}>PKR {Number(m.ldcp).toLocaleString()}</span>
+            <span style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '2px' }}>Open: PKR {Number(m.open).toLocaleString()}</span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Day High / Low</span>
+            <span style={{ color: '#10b981', fontWeight: 800, fontSize: '15px' }}>{Number(m.high).toLocaleString()}</span>
+            <span style={{ color: '#f43f5e', fontSize: '12px', fontWeight: 700, display: 'block' }}>{Number(m.low).toLocaleString()}</span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>24H Total Volume</span>
+            <span style={{ color: '#fbbf24', fontWeight: 800, fontSize: '16px' }}>{Number(m.volume).toLocaleString()}</span>
+            <span style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '2px' }}>Shares Traded</span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>P/E & P/B Multiples</span>
+            <span style={{ color: '#06b6d4', fontWeight: 800, fontSize: '16px' }}>{m.pe}x</span>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>P/B: {m.pb}x</span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>Dividend & ROE</span>
+            <span style={{ color: '#34d399', fontWeight: 800, fontSize: '16px' }}>{m.divYield}%</span>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>ROE: {m.roe}%</span>
+          </div>
+
+          <div>
+            <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block', fontWeight: 600 }}>StockIQ Score</span>
+            <span style={{ color: '#ffffff', fontWeight: 900, fontSize: '20px' }}>{strategyAnalysis?.compositeScore || scores.overall} <span style={{ fontSize: '11px', color: '#64748b' }}>/100</span></span>
+            <span style={{ display: 'inline-block', fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '9999px', border: '1px solid', color: verdictDetails.hexColor, borderColor: verdictDetails.hexColor, background: '#0f172a', marginTop: '2px' }}>
+              {verdictDetails.label}
+            </span>
+          </div>
+
+        </div>
+
+        {/* Range Gauges (Day Range & 52-Week Range) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          
+          {/* Day Range Bar */}
+          <div style={{ background: '#090d16', padding: '12px 16px', borderRadius: '12px', border: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+              <span>Day Low: <b style={{ color: '#f43f5e' }}>{Number(m.low).toLocaleString()}</b></span>
+              <span style={{ fontWeight: 700, color: '#e2e8f0' }}>Intraday Range</span>
+              <span>Day High: <b style={{ color: '#10b981' }}>{Number(m.high).toLocaleString()}</b></span>
+            </div>
+            <div style={{ position: 'relative', width: '100%', height: '8px', background: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ width: `${dayRangePos}%`, height: '100%', background: 'linear-gradient(to right, #f43f5e, #10b981)', borderRadius: '4px' }} />
+            </div>
+          </div>
+
+          {/* 52-Week Range Bar */}
+          <div style={{ background: '#090d16', padding: '12px 16px', borderRadius: '12px', border: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+              <span>52W Low: <b style={{ color: '#f43f5e' }}>{Number(m.low52).toLocaleString()}</b></span>
+              <span style={{ fontWeight: 700, color: '#e2e8f0' }}>52-Week Range ({yearRangePos}%)</span>
+              <span>52W High: <b style={{ color: '#10b981' }}>{Number(m.high52).toLocaleString()}</b></span>
+            </div>
+            <div style={{ position: 'relative', width: '100%', height: '8px', background: '#334155', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ width: `${yearRangePos}%`, height: '100%', background: 'linear-gradient(to right, #6366f1, #06b6d4, #10b981)', borderRadius: '4px' }} />
             </div>
           </div>
 
         </div>
 
-        {/* RIGHT: 10-Category Breakdown */}
-        <div style={{ background: '#0f172a', padding: '18px 20px', borderRadius: '18px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      </div>
+
+      {/* ================================================================
+          3. STRATEGY ANALYSIS & GROWTH DRIVERS VS RISK WARNINGS
+      ================================================================ */}
+      {strategyAnalysis && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+          
+          {/* Growth Drivers / Catalysts ("Why Stock Price Will Go Up") */}
+          <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #1e293b' }}>
+              <Zap style={{ width: '16px', height: '16px', color: '#10b981' }} />
+              <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                Growth Drivers & Catalysts <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>({strategyAnalysis.growthDrivers.length} Identified)</span>
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {strategyAnalysis.growthDrivers.map((driver, idx) => (
+                <div key={idx} style={{ background: '#090d16', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#34d399', fontWeight: 700, fontSize: '12px', marginBottom: '3px' }}>
+                    <ArrowUpRight style={{ width: '14px', height: '14px' }} />
+                    {driver.title}
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0, lineHeight: 1.45 }}>
+                    {driver.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Risk Factors & Headwinds ("Why Stock Price Might Fall / Risks") */}
+          <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #1e293b' }}>
+              <AlertTriangle style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+              <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                Risk Factors & Headwinds <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>({strategyAnalysis.riskWarnings.length} Flagged)</span>
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {strategyAnalysis.riskWarnings.map((risk, idx) => (
+                <div key={idx} style={{ background: '#090d16', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fbbf24', fontWeight: 700, fontSize: '12px', marginBottom: '3px' }}>
+                    <AlertTriangle style={{ width: '13px', height: '13px' }} />
+                    {risk.title}
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#cbd5e1', margin: 0, lineHeight: 1.45 }}>
+                    {risk.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ================================================================
+          4. 6-MONTH CHART & 10-CATEGORY PROGRESS BREAKDOWN
+      ================================================================ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        
+        {/* Price Chart */}
+        <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '7px', margin: 0 }}>
+              <Activity style={{ width: '15px', height: '15px', color: '#10b981' }} />
+              6-Month Price Trend (PKR)
+            </h3>
+            <span style={{ fontSize: '11px', color: '#94a3b8', background: '#1e293b', padding: '3px 9px', borderRadius: '7px', border: '1px solid #334155' }}>
+              PSX Market Data
+            </span>
+          </div>
+
+          <div style={{ width: '100%', height: '220px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stock.priceHistory || []}>
+                <defs>
+                  <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={verdictDetails.hexColor} stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor={verdictDetails.hexColor} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#fff', fontSize: '12px' }}
+                  formatter={(val) => [`PKR ${val}`, 'Price']}
+                />
+                <Area type="monotone" dataKey="price" stroke={verdictDetails.hexColor} strokeWidth={2.5} fillOpacity={1} fill="url(#priceGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* 10-Category Breakdown */}
+        <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
             <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '7px', margin: 0 }}>
               <BarChart3 style={{ width: '15px', height: '15px', color: '#6366f1' }} />
@@ -365,21 +510,21 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8' }}>Score / 100</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
             {categories.map((cat) => {
               const Icon = cat.icon;
               return (
-                <div key={cat.name} style={{ background: '#090d16', padding: '10px 12px', borderRadius: '10px', border: '1px solid #1e293b' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <div key={cat.name} style={{ background: '#090d16', padding: '9px 12px', borderRadius: '10px', border: '1px solid #1e293b' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                      <Icon style={{ width: '14px', height: '14px', color: cat.color }} />
+                      <Icon style={{ width: '13px', height: '13px', color: cat.color }} />
                       <span style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>{cat.name}</span>
                     </div>
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#ffffff', background: '#1e293b', padding: '1px 7px', borderRadius: '5px', border: '1px solid #334155' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#ffffff', background: '#1e293b', padding: '1px 6px', borderRadius: '4px', border: '1px solid #334155' }}>
                       {cat.score}/100
                     </span>
                   </div>
-                  <div style={{ width: '100%', height: '7px', background: '#334155', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', height: '6px', background: '#334155', borderRadius: '3px', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${cat.score}%`, background: cat.barColor, borderRadius: '3px', transition: 'width 0.5s ease' }} />
                   </div>
                 </div>
@@ -389,6 +534,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
         </div>
 
       </div>
+
     </div>
   );
 }
