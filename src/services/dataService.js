@@ -1,10 +1,14 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { MOCK_COMPANIES } from './mockData';
 import { computeStockIQScore } from './calculations';
+import { evaluateStockAlgorithm } from './scoringAlgorithm';
 
 export async function fetchTopScoringStocks() {
   if (!isSupabaseConfigured) {
-    return MOCK_COMPANIES;
+    return MOCK_COMPANIES.map(s => {
+      const algo = evaluateStockAlgorithm(s);
+      return { ...s, algorithmicAssessment: algo };
+    });
   }
 
   try {
@@ -15,7 +19,10 @@ export async function fetchTopScoringStocks() {
       .order('ticker', { ascending: true });
 
     if (compErr || !companies || companies.length === 0) {
-      return MOCK_COMPANIES;
+      return MOCK_COMPANIES.map(s => {
+        const algo = evaluateStockAlgorithm(s);
+        return { ...s, algorithmicAssessment: algo };
+      });
     }
 
     // 2. Fetch all live prices with 12 attributes
@@ -77,19 +84,23 @@ export async function fetchTopScoringStocks() {
         priceHistory: fallback.priceHistory
       };
 
-      const calculatedScores = computeStockIQScore(stockObj);
-      stockObj.scores = calculatedScores;
+      // Run calculations & deterministic scoring algorithm
+      stockObj.scores = computeStockIQScore(stockObj);
+      stockObj.algorithmicAssessment = evaluateStockAlgorithm(stockObj);
 
       return stockObj;
     });
 
-    // Sort by StockIQ overall rating descending
-    merged.sort((a, b) => (b.scores?.overall || 0) - (a.scores?.overall || 0));
+    // Sort by algorithmic composite score descending
+    merged.sort((a, b) => (b.algorithmicAssessment?.compositeScore || 0) - (a.algorithmicAssessment?.compositeScore || 0));
 
     return merged;
   } catch (err) {
     console.warn('Error fetching Supabase stocks, falling back:', err);
-    return MOCK_COMPANIES;
+    return MOCK_COMPANIES.map(s => {
+      const algo = evaluateStockAlgorithm(s);
+      return { ...s, algorithmicAssessment: algo };
+    });
   }
 }
 
@@ -100,7 +111,8 @@ export async function fetchStockDetails(ticker) {
 
 export async function fetchUserWatchlist(userId) {
   if (!isSupabaseConfigured || !userId) {
-    return [MOCK_COMPANIES[0], MOCK_COMPANIES[1]];
+    const all = await fetchTopScoringStocks();
+    return [all[0], all[1]];
   }
 
   try {
@@ -126,26 +138,28 @@ export async function fetchUserWatchlist(userId) {
     console.warn('Watchlist fetch fallback:', e);
   }
 
-  return [MOCK_COMPANIES[0], MOCK_COMPANIES[1]];
+  const fallbackAll = await fetchTopScoringStocks();
+  return [fallbackAll[0], fallbackAll[1]];
 }
 
 export async function fetchUserPortfolio(userId) {
+  const allStocks = await fetchTopScoringStocks();
   const fallbackHoldings = [
     {
       id: '1',
-      ticker: 'LUCK',
-      name: 'Lucky Cement Limited',
+      ticker: allStocks[0]?.ticker || 'LUCK',
+      name: allStocks[0]?.name || 'Lucky Cement Limited',
       shares: 300,
-      buyPrice: 610.00,
-      currentPrice: 907.65
+      buyPrice: (allStocks[0]?.price || 440) * 0.95,
+      currentPrice: allStocks[0]?.price || 442.69
     },
     {
       id: '2',
-      ticker: 'ENGRO',
-      name: 'Engro Corporation Limited',
+      ticker: allStocks[1]?.ticker || 'ENGRO',
+      name: allStocks[1]?.name || 'Engro Corporation Limited',
       shares: 150,
-      buyPrice: 450.00,
-      currentPrice: 485.38
+      buyPrice: (allStocks[1]?.price || 480) * 0.95,
+      currentPrice: allStocks[1]?.price || 485.38
     }
   ];
 
@@ -167,7 +181,6 @@ export async function fetchUserPortfolio(userId) {
         .eq('portfolio_id', portfolios[0].id);
 
       if (holdings && holdings.length > 0) {
-        const allStocks = await fetchTopScoringStocks();
         const priceMap = {};
         allStocks.forEach(s => { priceMap[s.ticker] = s; });
 
