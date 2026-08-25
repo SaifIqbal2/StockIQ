@@ -9,4 +9,11 @@ export const isSupabaseConfigured = Boolean(
   !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')
 );
 
+if (!isSupabaseConfigured) {
+  console.warn(
+    '⚠️ [StockIQ Vercel Warning] Supabase credentials not found in environment variables. ' +
+    'Please configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Vercel Project Settings for live production database sync.'
+  );
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey);

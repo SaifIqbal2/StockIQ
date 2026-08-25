@@ -1,11 +1,11 @@
 -- =================================================================
--- StockIQ Supabase Schema (UUID Standardized Fix)
+-- StockIQ Supabase Schema (UUID Standardized & RLS Policies)
 -- =================================================================
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Drop conflicting old tables if needed to refresh types cleanly
+-- Drop existing tables to refresh clean structure if running fresh
 DROP TABLE IF EXISTS public.watchlist_items CASCADE;
 DROP TABLE IF EXISTS public.watchlists CASCADE;
 DROP TABLE IF EXISTS public.holdings CASCADE;
@@ -187,8 +187,8 @@ ALTER TABLE public.financial_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.price_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_scores ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read on companies" ON public.companies FOR SELECT USING (true);
-CREATE POLICY "Allow public read on live_prices" ON public.live_prices FOR SELECT USING (true);
+CREATE POLICY "Allow public read and sync on companies" ON public.companies FOR ALL USING (true);
+CREATE POLICY "Allow public read and sync on live_prices" ON public.live_prices FOR ALL USING (true);
 CREATE POLICY "Allow public read on financial_data" ON public.financial_data FOR SELECT USING (true);
 CREATE POLICY "Allow public read on price_data" ON public.price_data FOR SELECT USING (true);
 CREATE POLICY "Allow public read on stock_scores" ON public.stock_scores FOR SELECT USING (true);
@@ -216,8 +216,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.live_prices;
 -- SEED DATA
 INSERT INTO public.companies (ticker, name, sector, market_cap, shares_outstanding, description)
 VALUES 
-    ('LUCK', 'Lucky Cement Limited', 'Cement', 215000000000, 323000000, 'Leading cement manufacturer in Pakistan with diversified international operations.'),
-    ('ENGRO', 'Engro Corporation Limited', 'Fertilizer & Conglomerate', 185000000000, 576000000, 'Premier Pakistani conglomerate operating in fertilizers, petrochemicals, energy, and telecom infrastructure.'),
+    ('LUCK', 'Lucky Cement Limited', 'Cement', 142980000000, 323000000, 'Leading cement manufacturer in Pakistan with diversified international operations.'),
+    ('ENGRO', 'Engro Corporation Limited', 'Fertilizer & Conglomerate', 279500000000, 576000000, 'Premier Pakistani conglomerate operating in fertilizers, petrochemicals, energy, and telecom infrastructure.'),
     ('SYS', 'Systems Limited', 'Technology', 120000000000, 290000000, 'Pakistan pioneer global technology service provider offering digital transformation solutions.'),
     ('OGDC', 'Oil & Gas Development Company Ltd', 'Oil & Gas Exploration', 540000000000, 4300000000, 'National oil and gas exploration flagship company of Pakistan.'),
     ('MARI', 'Mari Petroleum Company Limited', 'Oil & Gas Exploration', 460000000000, 133000000, 'High-yielding oil & gas discovery and development major operating key gas fields.'),
@@ -227,8 +227,8 @@ ON CONFLICT (ticker) DO NOTHING;
 
 INSERT INTO public.live_prices (ticker, price, previous_close, change, change_percent, volume, pe_ratio, pb_ratio, roe, dividend_yield)
 VALUES 
-    ('LUCK', 685.50, 673.10, 12.40, 1.84, 1420500, 6.8, 1.1, 18.5, 4.2),
-    ('ENGRO', 340.20, 342.30, -2.10, -0.61, 2150000, 5.4, 0.95, 21.4, 12.8),
+    ('LUCK', 442.69, 438.50, 4.19, 0.95, 1420500, 6.8, 1.1, 18.5, 4.2),
+    ('ENGRO', 485.38, 481.10, 4.28, 0.89, 2150000, 5.4, 0.95, 21.4, 12.8),
     ('SYS', 415.00, 396.50, 18.50, 4.67, 3890000, 14.2, 3.8, 28.6, 2.1),
     ('OGDC', 126.80, 125.65, 1.15, 0.92, 6450000, 3.2, 0.62, 22.8, 11.5),
     ('MARI', 2480.00, 2435.00, 45.00, 1.85, 280000, 4.8, 1.8, 42.1, 8.9),

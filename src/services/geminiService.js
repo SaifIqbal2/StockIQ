@@ -2,9 +2,15 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
+if (!apiKey) {
+  console.info(
+    'ℹ️ [StockIQ Vercel Notice] VITE_GEMINI_API_KEY is not configured in Vercel settings. ' +
+    'Falling back to analytical strategy stock report mode.'
+  );
+}
+
 export async function generateStockReport(stock, userQuery = '') {
   if (!apiKey) {
-    // Fallback analytical summary
     return `### 🤖 StockIQ AI Financial Analysis: ${stock.name} (${stock.ticker})
 
 **Key Multiples & Financial Evaluation:**
@@ -15,7 +21,7 @@ export async function generateStockReport(stock, userQuery = '') {
 **Strategy Fitness Verdict:**
 Based on the overall StockIQ Score of **${stock.scores?.overall || 85}/100**, this stock is categorized under Strategy Fit: **STRONG FIT**.
 
-*(Note: Add your VITE_GEMINI_API_KEY in .env file to enable custom real-time Gemini Flash analysis prompts!)*`;
+*(Note: Add your VITE_GEMINI_API_KEY in Vercel Environment Variables to enable dynamic real-time Gemini Flash analysis prompts!)*`;
   }
 
   try {
