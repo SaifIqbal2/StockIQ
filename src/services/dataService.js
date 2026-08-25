@@ -8,16 +8,17 @@ export async function fetchTopScoringStocks() {
   }
 
   try {
-    // 1. Fetch companies
+    // 1. Fetch all companies without limits
     const { data: companies, error: compErr } = await supabase
       .from('companies')
-      .select('*');
+      .select('*')
+      .order('ticker', { ascending: true });
 
     if (compErr || !companies || companies.length === 0) {
       return MOCK_COMPANIES;
     }
 
-    // 2. Fetch live prices
+    // 2. Fetch all live prices
     const { data: prices } = await supabase
       .from('live_prices')
       .select('*');
@@ -29,7 +30,7 @@ export async function fetchTopScoringStocks() {
       });
     }
 
-    // Merge company and live price records
+    // Merge company records with live prices
     const merged = companies.map((c, idx) => {
       const live = priceMap[c.ticker] || {};
       const fallback = MOCK_COMPANIES[idx % MOCK_COMPANIES.length];
@@ -55,7 +56,7 @@ export async function fetchTopScoringStocks() {
         pb_ratio,
         roe,
         dividend_yield,
-        description: c.description || `${c.name} is a leading listed company on the Pakistan Stock Exchange (${c.sector || 'General'}).`,
+        description: c.description || `${c.name} is a listed public company on the Pakistan Stock Exchange (${c.sector || 'General'}).`,
         financials: fallback.financials,
         priceHistory: fallback.priceHistory
       };
