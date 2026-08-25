@@ -18,7 +18,7 @@ export async function fetchTopScoringStocks() {
     }
 
     // 2. Fetch live prices
-    const { data: prices, error: priceErr } = await supabase
+    const { data: prices } = await supabase
       .from('live_prices')
       .select('*');
 
@@ -29,25 +29,25 @@ export async function fetchTopScoringStocks() {
       });
     }
 
-    // Merge company and price records
+    // Merge company and live price records
     const merged = companies.map((c, idx) => {
       const live = priceMap[c.ticker] || {};
-      const mockFallback = MOCK_COMPANIES[idx % MOCK_COMPANIES.length];
+      const fallback = MOCK_COMPANIES[idx % MOCK_COMPANIES.length];
 
-      const price = live.price ? Number(live.price) : mockFallback.price;
-      const change = live.change ? Number(live.change) : mockFallback.change;
-      const changePercent = live.change_percent ? Number(live.change_percent) : mockFallback.changePercent;
-      const pe_ratio = live.pe_ratio ? Number(live.pe_ratio) : mockFallback.pe_ratio;
-      const pb_ratio = live.pb_ratio ? Number(live.pb_ratio) : mockFallback.pb_ratio;
-      const roe = live.roe ? Number(live.roe) : mockFallback.roe;
-      const dividend_yield = live.dividend_yield ? Number(live.dividend_yield) : mockFallback.dividend_yield;
+      const price = live.price !== undefined && live.price !== null ? Number(live.price) : fallback.price;
+      const change = live.change !== undefined && live.change !== null ? Number(live.change) : fallback.change;
+      const changePercent = live.change_percent !== undefined && live.change_percent !== null ? Number(live.change_percent) : fallback.changePercent;
+      const pe_ratio = live.pe_ratio ? Number(live.pe_ratio) : fallback.pe_ratio;
+      const pb_ratio = live.pb_ratio ? Number(live.pb_ratio) : fallback.pb_ratio;
+      const roe = live.roe ? Number(live.roe) : fallback.roe;
+      const dividend_yield = live.dividend_yield ? Number(live.dividend_yield) : fallback.dividend_yield;
 
       const stockObj = {
         id: c.id,
         ticker: c.ticker,
         name: c.name,
         sector: c.sector || 'General',
-        market_cap: c.market_cap || mockFallback.market_cap,
+        market_cap: c.market_cap || fallback.market_cap,
         price,
         change,
         changePercent,
@@ -55,9 +55,9 @@ export async function fetchTopScoringStocks() {
         pb_ratio,
         roe,
         dividend_yield,
-        description: c.description || mockFallback.description,
-        financials: mockFallback.financials,
-        priceHistory: mockFallback.priceHistory
+        description: c.description || `${c.name} is a leading listed company on the Pakistan Stock Exchange (${c.sector || 'General'}).`,
+        financials: fallback.financials,
+        priceHistory: fallback.priceHistory
       };
 
       const calculatedScores = computeStockIQScore(stockObj);
@@ -65,6 +65,9 @@ export async function fetchTopScoringStocks() {
 
       return stockObj;
     });
+
+    // Sort by StockIQ overall rating descending
+    merged.sort((a, b) => (b.scores?.overall || 0) - (a.scores?.overall || 0));
 
     return merged;
   } catch (err) {
@@ -117,15 +120,15 @@ export async function fetchUserPortfolio(userId) {
       name: 'Lucky Cement Limited',
       shares: 300,
       buyPrice: 610.00,
-      currentPrice: 685.50
+      currentPrice: 907.65
     },
     {
       id: '2',
-      ticker: 'SYS',
-      name: 'Systems Limited',
+      ticker: 'ENGRO',
+      name: 'Engro Corporation Limited',
       shares: 150,
-      buyPrice: 360.00,
-      currentPrice: 415.00
+      buyPrice: 450.00,
+      currentPrice: 485.38
     }
   ];
 
