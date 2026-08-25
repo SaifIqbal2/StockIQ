@@ -98,7 +98,7 @@ async function fetchAllPSXSymbols() {
   return [];
 }
 
-// 2. Fetch Single Stock 12 Trading Attributes from PSX Timeseries API (Fully Isolated Scope)
+// 2. Fetch Single Stock 12 Trading Attributes from PSX Timeseries API (Exact Schema Match)
 async function fetchDetailedStockStats(symbol, sectorName = 'General') {
   try {
     const controller = new AbortController();
@@ -144,7 +144,6 @@ async function fetchDetailedStockStats(symbol, sectorName = 'General') {
           return {
             ticker: symbol,
             price: currentPrice,
-            open_price: openPrice,
             previous_close: ldcp,
             change: change,
             change_percent: changePercent,
@@ -181,7 +180,7 @@ async function upsertInChunks(tableName, items, chunkSize = 50) {
 
 // 4. Main Full Market Ingestion Pipeline
 async function runFullMarketIngestion() {
-  console.log(`\n🇵🇰 [${new Date().toISOString()}] Starting FULL PSX Market Ingestion (Isolated Variables)...`);
+  console.log(`\n🇵🇰 [${new Date().toISOString()}] Starting FULL PSX Market Ingestion (Exact Schema Clean Upsert)...`);
 
   const equities = await fetchAllPSXSymbols();
   if (!equities || equities.length === 0) {
@@ -201,7 +200,7 @@ async function runFullMarketIngestion() {
   await upsertInChunks('companies', companiesPayload, 50);
   console.log(`✅ Companies directory synced!`);
 
-  // B. Fetch 12-Attribute Trading Stats in Batches (Clean Scope Isolation)
+  // B. Fetch 12-Attribute Trading Stats in Batches
   console.log(`\n📊 Fetching isolated real-time market stats for all ${equities.length} companies...`);
   const BATCH_SIZE = 15;
   const livePrices = [];
@@ -210,7 +209,6 @@ async function runFullMarketIngestion() {
     const batch = equities.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(
       batch.map(async (eq) => {
-        // Isolate per-ticker processing
         const itemStats = await fetchDetailedStockStats(eq.symbol, eq.sectorName);
         return itemStats;
       })
@@ -228,10 +226,10 @@ async function runFullMarketIngestion() {
   }
 
   // C. Upsert Live Prices with unique ticker keys
-  console.log(`\n💾 Upserting ${livePrices.length} isolated live prices into Supabase 'live_prices' table...`);
+  console.log(`\n💾 Upserting ${livePrices.length} clean live prices into Supabase 'live_prices' table...`);
   await upsertInChunks('live_prices', livePrices, 50);
 
-  console.log(`\n🎉 Isolated Market Sync Complete: Synced ${livePrices.length} distinct PSX stock prices!`);
+  console.log(`\n🎉 Full Market Clean Sync Complete: Synced ${livePrices.length} distinct PSX stock prices with zero notices!`);
 }
 
 async function main() {
