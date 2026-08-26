@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid 
 } from 'recharts';
@@ -7,9 +7,12 @@ import {
   BarChart3, DollarSign, Layers, CheckCircle2, BookmarkPlus,
   ChevronLeft, ChevronRight, LayoutGrid, Table2, Eye,
   ArrowUpRight, AlertTriangle, Compass, Target, Gauge, Zap,
-  Info, CheckCircle, HelpCircle, Wallet, ShieldAlert, Clock, TrendingDown as TrendDown
+  Info, CheckCircle, HelpCircle, Wallet, ShieldAlert, Clock, TrendingDown as TrendDown,
+  SlidersHorizontal
 } from 'lucide-react';
 import { evaluateStockAlgorithm } from '../services/scoringAlgorithm';
+import { applyFilters, DEFAULT_FILTERS } from '../services/filterEngine';
+import { StockFilterBar } from './StockFilterBar';
 
 export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, onAddToWatchlist }) {
   const stock = selectedStock || stocks[0];
@@ -27,7 +30,14 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
 
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
   const [showTooltip, setShowTooltip] = useState(false);
+  const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const carouselRef = useRef(null);
+
+  // Apply filter pipeline to full stock list
+  const displayedStocks = useMemo(
+    () => applyFilters(stocks, filters),
+    [stocks, filters]
+  );
 
   const scrollCarousel = (dir) => {
     if (!carouselRef.current) return;
@@ -57,6 +67,16 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* ================================================================
+          0. ADVANCED STOCK SCREENER FILTER BAR
+      ================================================================ */}
+      <StockFilterBar
+        allStocks={stocks}
+        filters={filters}
+        onFiltersChange={setFilters}
+        filteredCount={displayedStocks.length}
+      />
+
+      {/* ================================================================
           1. TOP PSX STOCKS CAROUSEL WITH 3-TIER FLAG BADGES
       ================================================================ */}
       <div style={{ background: '#0f172a', padding: '16px 20px', borderRadius: '16px', border: '1px solid #1e293b' }}>
@@ -66,7 +86,12 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <TrendingUp style={{ width: '15px', height: '15px', color: '#10b981' }} />
             <h2 style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
-              PSX Stocks Universe ({stocks.length})
+              PSX Stocks Universe (
+                {displayedStocks.length !== stocks.length
+                  ? <><span style={{ color: '#10b981' }}>{displayedStocks.length} Filtered Picks</span><span style={{ color: '#475569' }}> / {stocks.length}</span></>
+                  : stocks.length
+                }
+              )
             </h2>
           </div>
 
@@ -131,7 +156,17 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               scrollbarColor: '#334155 #0f172a',
             }}
           >
-            {stocks.map((item) => {
+            {displayedStocks.length === 0 ? (
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', padding: '40px 20px', gap: '10px',
+                color: '#475569', minWidth: '300px'
+              }}>
+                <SlidersHorizontal style={{ width: '32px', height: '32px', color: '#334155' }} />
+                <p style={{ fontSize: '13px', fontWeight: 700, margin: 0 }}>No stocks match your current filters</p>
+                <p style={{ fontSize: '11px', margin: 0, color: '#334155' }}>Try adjusting or resetting the screener above</p>
+              </div>
+            ) : displayedStocks.map((item) => {
               const itemAlgo = item.algorithmicAssessment || evaluateStockAlgorithm(item);
               const itemFlag = itemAlgo?.flag;
               const isSelected = item.ticker === stock.ticker;
@@ -196,7 +231,14 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
                 </tr>
               </thead>
               <tbody>
-                {stocks.map((item, idx) => {
+                {displayedStocks.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#475569' }}>
+                      <SlidersHorizontal style={{ width: '24px', height: '24px', marginBottom: '8px', display: 'block', margin: '0 auto 8px' }} />
+                      No stocks match your current screener filters. Reset filters to restore the full market view.
+                    </td>
+                  </tr>
+                ) : displayedStocks.map((item, idx) => {
                   const itemAlgo = item.algorithmicAssessment || evaluateStockAlgorithm(item);
                   const itemFlag = itemAlgo?.flag;
                   const isSelected = item.ticker === stock.ticker;
