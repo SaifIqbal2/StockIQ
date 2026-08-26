@@ -65,15 +65,17 @@ function mergeStockObject(c, live = {}) {
   const p3 = Number(((previous_close * 0.98)).toFixed(2));
   const p4 = Number(((previous_close * 0.96)).toFixed(2));
 
+  const resolvedStatus = DELISTED_REGISTRY[c.ticker]?.status || c.status || live.status || 'ACTIVE';
+
   const stockObj = {
     id:               c.id,
     ticker:           c.ticker,
     name:             c.name || c.ticker,
     sector:           c.sector || 'General',
     market_cap:       Number(c.market_cap || (price * 10000000)),
-    status:           c.status || live.status || 'ACTIVE',
-    delisted_date:    c.delisted_date || null,
-    delisting_reason: c.delisting_reason || null,
+    status:           resolvedStatus,
+    delisted_date:    DELISTED_REGISTRY[c.ticker]?.delisted_date || c.delisted_date || null,
+    delisting_reason: DELISTED_REGISTRY[c.ticker]?.reason || c.delisting_reason || null,
     price,
     previous_close,
     open_price,
@@ -117,7 +119,7 @@ function mergeStockObject(c, live = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchTopScoringStocks — ACTIVE securities only (handles null status safely)
+// fetchTopScoringStocks — Clean, robust query with in-memory delisting gating
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchTopScoringStocks() {
   if (!isSupabaseConfigured) {
@@ -128,45 +130,24 @@ export async function fetchTopScoringStocks() {
   }
 
   try {
-    // 1. Fetch companies with active/null status filter and proper v2 ordering
-    let compRes = await supabase
+    // 1. Fetch all companies cleanly without unsupported PostgREST filters
+    const { data: companies, error: compErr } = await supabase
       .from('companies')
       .select('*')
-      .or('status.eq.ACTIVE,status.is.null')
       .order('ticker', { ascending: true });
 
-    let companies = compRes.data;
-    if (compRes.error || !companies || companies.length === 0) {
-      // Fallback query if .or syntax or status column is in transition
-      const { data: fallbackCompanies, error: fbErr } = await supabase
-        .from('companies')
-        .select('*')
-        .order('ticker', { ascending: true });
-
-      if (fbErr || !fallbackCompanies || fallbackCompanies.length === 0) {
-        return MOCK_COMPANIES.map(s => {
-          const algo = evaluateStockAlgorithm(s);
-          return { ...s, algorithmicAssessment: algo };
-        });
-      }
-      companies = fallbackCompanies.filter(c => c.status !== 'DELISTED');
+    if (compErr || !companies || companies.length === 0) {
+      return MOCK_COMPANIES.map(s => {
+        const algo = evaluateStockAlgorithm(s);
+        return { ...s, algorithmicAssessment: algo };
+      });
     }
 
-    // 2. Fetch live prices with proper v2 ordering
-    let priceRes = await supabase
+    // 2. Fetch live prices cleanly
+    const { data: prices } = await supabase
       .from('live_prices')
       .select('*')
-      .or('status.eq.ACTIVE,status.is.null')
       .order('ticker', { ascending: true });
-
-    let prices = priceRes.data;
-    if (priceRes.error || !prices) {
-      const { data: fallbackPrices } = await supabase
-        .from('live_prices')
-        .select('*')
-        .order('ticker', { ascending: true });
-      prices = fallbackPrices || [];
-    }
 
     const priceMap = {};
     if (prices) {
@@ -175,9 +156,17 @@ export async function fetchTopScoringStocks() {
       });
     }
 
-    const merged = companies.map(c => mergeStockObject(c, priceMap[c.ticker] || {}));
+    // 3. Filter out delisted securities in-memory to prevent any SQL schema conflict
+    const activeCompanies = companies.filter(c => {
+      const delistInfo = DELISTED_REGISTRY[c.ticker];
+      if (delistInfo && delistInfo.status === 'DELISTED') return false;
+      if (c.status && c.status === 'DELISTED') return false;
+      return true;
+    });
 
-    // Filter stocks with valid price, sort by composite score
+    const merged = activeCompanies.map(c => mergeStockObject(c, priceMap[c.ticker] || {}));
+
+    // Filter stocks with valid price > 0, sort by composite score descending
     const validStocks = merged.filter(s => s.price > 0);
     const finalStocks = validStocks.length > 0 ? validStocks : merged;
     finalStocks.sort((a, b) => (b.algorithmicAssessment?.compositeScore || 0) - (a.algorithmicAssessment?.compositeScore || 0));
@@ -193,7 +182,7 @@ export async function fetchTopScoringStocks() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchLivePrices — retrieve live market price feed with proper v2 order
+// fetchLivePrices — retrieve live market price feed
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchLivePrices() {
   if (!isSupabaseConfigured) return [];
@@ -201,16 +190,9 @@ export async function fetchLivePrices() {
     const { data, error } = await supabase
       .from('live_prices')
       .select('*')
-      .or('status.eq.ACTIVE,status.is.null')
-      .order('updated_at', { ascending: false });
+      .order('ticker', { ascending: true });
 
-    if (error) {
-      const { data: fallbackData } = await supabase
-        .from('live_prices')
-        .select('*')
-        .order('ticker', { ascending: true });
-      return fallbackData || [];
-    }
+    if (error) return [];
     return data || [];
   } catch (e) {
     return [];
@@ -219,12 +201,12 @@ export async function fetchLivePrices() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fetchDelistedStock — for direct ticker lookup (URL/search)
-// Returns { isDelisted: true, delistInfo, historicalData? } for gated tickers
+// Returns { isDelisted: true, delistInfo } for gated tickers
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchDelistedStock(ticker) {
-  const upperTicker = ticker.toUpperCase();
+  const upperTicker = (ticker || '').toUpperCase();
 
-  // Check frontend registry first (fast path — no DB round-trip)
+  // Check frontend registry first (fast path — zero DB round-trip)
   if (DELISTED_REGISTRY[upperTicker]) {
     return {
       isDelisted: true,
@@ -233,26 +215,25 @@ export async function fetchDelistedStock(ticker) {
     };
   }
 
-  // Fallback: check DB in case of newly delisted stock not yet in registry
+  // Check DB fallback
   if (isSupabaseConfigured) {
     try {
       const { data } = await supabase
         .from('companies')
-        .select('ticker, name, sector, status, delisted_date, delisting_reason')
+        .select('*')
         .eq('ticker', upperTicker)
-        .neq('status', 'ACTIVE')
         .single();
 
-      if (data) {
+      if (data && data.status && data.status !== 'ACTIVE') {
         return {
           isDelisted: true,
           ticker: upperTicker,
           delistInfo: {
-            name:         data.name,
-            status:       data.status,
-            delisted_date: data.delisted_date,
-            reason:       data.delisting_reason || 'This security is no longer actively traded on PSX.',
-            successor:    null,
+            name:          data.name,
+            status:        data.status,
+            delisted_date: data.delisted_date || null,
+            reason:        data.delisting_reason || 'This security is no longer actively traded on PSX.',
+            successor:     null,
             successor_name: null
           }
         };
@@ -368,7 +349,7 @@ export async function fetchUserPortfolio(userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// subscribeToLivePrices — Realtime subscription (ACTIVE prices only)
+// subscribeToLivePrices — Realtime subscription
 // ─────────────────────────────────────────────────────────────────────────────
 export function subscribeToLivePrices(onPriceUpdate) {
   if (!isSupabaseConfigured) return () => {};
