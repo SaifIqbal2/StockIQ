@@ -13,6 +13,7 @@ import {
 import { evaluateStockAlgorithm } from '../services/scoringAlgorithm';
 import { applyFilters, DEFAULT_FILTERS } from '../services/filterEngine';
 import { StockFilterBar } from './StockFilterBar';
+import { DelistedBanner } from './DelistedBanner';
 
 export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, onAddToWatchlist }) {
   const stock = selectedStock || stocks[0];
@@ -45,10 +46,10 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
   };
 
   const subScoresList = [
-    { name: 'Valuation Multiple', score: algo?.subScores?.valuation || 85, icon: DollarSign, color: '#22d3ee', barColor: '#06b6d4' },
-    { name: 'Profitability & ROE', score: algo?.subScores?.profitability || 88, icon: Award, color: '#34d399', barColor: '#10b981' },
-    { name: 'Price & Volume Momentum', score: algo?.subScores?.momentum || 76, icon: TrendingUp, color: '#818cf8', barColor: '#6366f1' },
-    { name: 'Liquidity & Risk Depth', score: algo?.subScores?.liquidity || 82, icon: ShieldCheck, color: '#fbbf24', barColor: '#f59e0b' }
+    { name: 'Fundamental Score', score: algo?.subScores?.fundamental || 80, icon: DollarSign, color: '#22d3ee', barColor: '#06b6d4' },
+    { name: 'Technical Score',   score: algo?.subScores?.technical   || 72, icon: Activity,   color: '#a78bfa', barColor: '#8b5cf6' },
+    { name: 'Momentum Score',    score: algo?.subScores?.momentum    || 76, icon: TrendingUp,  color: '#818cf8', barColor: '#6366f1' },
+    { name: 'Risk Score',        score: algo?.subScores?.risk        || 70, icon: ShieldCheck, color: '#fbbf24', barColor: '#f59e0b' }
   ];
 
   const price = Number(stock.price || 0);
@@ -308,7 +309,22 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
 
       {/* ================================================================
           2. ACTIVE HERO PANEL WITH 3-TIER FLAG & EXPLICIT RATIONALE
+             (or DELISTED BANNER if security is gated)
       ================================================================ */}
+      {stock.status && stock.status !== 'ACTIVE' ? (
+        /* Delisted / Suspended Security — Show banner, hide all trade actions */
+        <DelistedBanner
+          ticker={stock.ticker}
+          delistInfo={{
+            name:          stock.name,
+            status:        stock.status,
+            delisted_date: stock.delisted_date,
+            reason:        stock.delisting_reason || 'This security is no longer actively traded on PSX.',
+            successor:     stock.successor || null,
+            successor_name: stock.successor_name || null
+          }}
+        />
+      ) : (
       <div style={{ background: '#0f172a', padding: '24px', borderRadius: '20px', border: '1px solid #1e293b' }}>
         
         {/* Top Header */}
@@ -324,27 +340,72 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               </span>
             </div>
 
-            {/* 3-Tier Flag Assessment Bar with Tooltip Trigger */}
+            {/* Action Signal Badge + RVOL + Breakout Context */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
-              <div 
+              {/* Action Signal — R:R Gated */}
+              {algo?.actionSignal && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '7px',
+                  background: algo.actionSignal.bg,
+                  border: `1px solid ${algo.actionSignal.border}`,
+                  padding: '6px 14px', borderRadius: '10px',
+                  boxShadow: `0 0 14px ${algo.actionSignal.color}20`
+                }}>
+                  <span style={{ fontSize: '14px' }}>{algo.actionSignal.icon}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 900, color: algo.actionSignal.color }}>
+                    {algo.actionSignal.label}
+                  </span>
+                  <span style={{ fontSize: '10px', color: algo.actionSignal.color, opacity: 0.7, fontWeight: 600 }}>
+                    R:R {algo.tradeStrategy?.rrRatio || 0}:1
+                  </span>
+                </div>
+              )}
+
+              {/* RVOL Badge */}
+              {algo?.rvol !== undefined && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  background: algo.rvol >= 1.5 ? 'rgba(16,185,129,0.10)' : 'rgba(100,116,139,0.10)',
+                  border: `1px solid ${algo.rvol >= 1.5 ? 'rgba(16,185,129,0.30)' : '#1e293b'}`,
+                  padding: '5px 10px', borderRadius: '8px'
+                }}>
+                  <BarChart3 style={{ width: '11px', height: '11px', color: algo.rvol >= 1.5 ? '#10b981' : '#64748b' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: algo.rvol >= 1.5 ? '#10b981' : '#64748b' }}>
+                    RVOL {algo.rvol}x
+                  </span>
+                </div>
+              )}
+
+              {/* Breakout Context Tag */}
+              {algo?.breakoutContext && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  background: `${algo.breakoutContext.color}12`,
+                  border: `1px solid ${algo.breakoutContext.color}40`,
+                  padding: '5px 10px', borderRadius: '8px'
+                }}>
+                  <Zap style={{ width: '11px', height: '11px', color: algo.breakoutContext.color }} />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: algo.breakoutContext.color }}>
+                    {algo.breakoutContext.label}
+                  </span>
+                </div>
+              )}
+
+              {/* 3-Tier flag (secondary) */}
+              <div
                 onClick={() => setShowTooltip(!showTooltip)}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
                   background: flag.bg, border: `1px solid ${flag.border}`,
-                  padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
-                  boxShadow: `0 0 16px ${flag.color}25`
+                  padding: '5px 12px', borderRadius: '9px', cursor: 'pointer'
                 }}
               >
-                <span style={{ fontSize: '14px' }}>{flag.icon}</span>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: flag.color }}>
+                <span style={{ fontSize: '13px' }}>{flag.icon}</span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: flag.color }}>
                   {flag.label} ({algo?.compositeScore}/100)
                 </span>
-                <Info style={{ width: '14px', height: '14px', color: flag.color, opacity: 0.8 }} />
+                <Info style={{ width: '12px', height: '12px', color: flag.color, opacity: 0.8 }} />
               </div>
-
-              <span style={{ fontSize: '12px', color: '#cbd5e1', maxWidth: '520px' }}>
-                {flag.summary}
-              </span>
             </div>
 
             {/* Expanded Explanatory Box (Why Flag Was Assigned) */}
@@ -489,6 +550,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
         )}
 
       </div>
+      )} {/* end of ternary: ACTIVE hero panel vs DelistedBanner */}
 
       {/* ================================================================
           3. TRADE STRATEGY & CAPITAL ALLOCATION PANEL
@@ -576,52 +638,95 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       </div>
 
       {/* ================================================================
-          4. DYNAMIC PROS (REASONS TO BUY) VS CONS (RISK FACTORS)
+          4. 3-POINT VERDICT BOX
       ================================================================ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+      <div style={{ background: '#0f172a', borderRadius: '20px', border: '1px solid #1e293b', overflow: 'hidden' }}>
         
-        {/* Pros: Reasons to Buy */}
-        <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #1e293b' }}>
-            <Zap style={{ width: '16px', height: '16px', color: '#10b981' }} />
-            <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-              Algorithmic Pros & Reasons to Buy <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>({algo?.pros?.length || 3})</span>
-            </h3>
+        {/* Header */}
+        <div style={{ padding: '16px 22px', borderBottom: '1px solid #1e293b', background: 'rgba(99,102,241,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers style={{ width: '16px', height: '16px', color: '#818cf8' }} />
+            <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>3-Point Investment Verdict</h3>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {algo?.pros?.map((pro, idx) => (
-              <div key={idx} style={{ background: '#090d16', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                <CheckCircle style={{ width: '15px', height: '15px', color: '#34d399', flexShrink: 0, marginTop: '2px' }} />
-                <p style={{ fontSize: '12px', color: '#e2e8f0', margin: 0, lineHeight: 1.45 }}>
-                  {pro}
-                </p>
-              </div>
-            ))}
-          </div>
+          {algo?.strategyLabel && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#818cf8', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', padding: '3px 9px', borderRadius: '9999px' }}>
+              {algo.strategyLabel}
+            </span>
+          )}
         </div>
 
-        {/* Cons: Risk Factors */}
-        <div style={{ background: '#0f172a', padding: '20px', borderRadius: '18px', border: '1px solid #1e293b' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid #1e293b' }}>
-            <AlertTriangle style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
-            <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-              Risk Factors & Headwinds <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>({algo?.cons?.length || 2})</span>
-            </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 0 }}>
+
+          {/* 🟢 Why Buy */}
+          <div style={{ padding: '18px 20px', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '12px' }}>
+              <CheckCircle style={{ width: '15px', height: '15px', color: '#10b981' }} />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🟢 Why Buy?</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {(algo?.verdict?.whyBuy || algo?.pros || []).map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
+                  <CheckCircle2 style={{ width: '13px', height: '13px', color: '#34d399', flexShrink: 0, marginTop: '2px' }} />
+                  <p style={{ fontSize: '12px', color: '#d1fae5', margin: 0, lineHeight: 1.45 }}>{item}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {algo?.cons?.map((con, idx) => (
-              <div key={idx} style={{ background: '#090d16', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.25)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                <AlertTriangle style={{ width: '14px', height: '14px', color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
-                <p style={{ fontSize: '12px', color: '#e2e8f0', margin: 0, lineHeight: 1.45 }}>
-                  {con}
-                </p>
-              </div>
-            ))}
+          {/* 🟡 Neutral */}
+          <div style={{ padding: '18px 20px', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '12px' }}>
+              <HelpCircle style={{ width: '15px', height: '15px', color: '#f59e0b' }} />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🟡 Neutral Points</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {(algo?.verdict?.neutral || []).map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
+                  <Info style={{ width: '13px', height: '13px', color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
+                  <p style={{ fontSize: '12px', color: '#fef3c7', margin: 0, lineHeight: 1.45 }}>{item}</p>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* 🔴 Why Avoid */}
+          <div style={{ padding: '18px 20px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '12px' }}>
+              <AlertTriangle style={{ width: '15px', height: '15px', color: '#ef4444' }} />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔴 Why Avoid / Risks?</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {(algo?.verdict?.whyAvoid || algo?.cons || []).map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
+                  <AlertTriangle style={{ width: '13px', height: '13px', color: '#f87171', flexShrink: 0, marginTop: '2px' }} />
+                  <p style={{ fontSize: '12px', color: '#fee2e2', margin: 0, lineHeight: 1.45 }}>{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ⚡ What Would Change This Rating? */}
+          <div style={{ padding: '18px 20px', gridColumn: '1 / -1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '12px' }}>
+              <Zap style={{ width: '15px', height: '15px', color: '#818cf8' }} />
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚡ What Would Change This Rating?</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {(algo?.verdict?.catalysts || []).map((item, i) => (
+                <div key={i} style={{
+                  background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+                  borderRadius: '10px', padding: '8px 12px',
+                  display: 'flex', alignItems: 'flex-start', gap: '7px',
+                  flex: '1 1 260px'
+                }}>
+                  <ArrowUpRight style={{ width: '13px', height: '13px', color: '#818cf8', flexShrink: 0, marginTop: '2px' }} />
+                  <p style={{ fontSize: '12px', color: '#c7d2fe', margin: 0, lineHeight: 1.45 }}>{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
-
       </div>
 
       {/* ================================================================
