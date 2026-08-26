@@ -117,7 +117,7 @@ function mergeStockObject(c, live = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchTopScoringStocks — ACTIVE securities only
+// fetchTopScoringStocks — ACTIVE securities only (handles null status safely)
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchTopScoringStocks() {
   if (!isSupabaseConfigured) {
@@ -128,25 +128,45 @@ export async function fetchTopScoringStocks() {
   }
 
   try {
-    // Gate: ACTIVE companies only
-    const { data: companies, error: compErr } = await supabase
+    // 1. Fetch companies with active/null status filter and proper v2 ordering
+    let compRes = await supabase
       .from('companies')
       .select('*')
-      .eq('status', 'ACTIVE')
+      .or('status.eq.ACTIVE,status.is.null')
       .order('ticker', { ascending: true });
 
-    if (compErr || !companies || companies.length === 0) {
-      return MOCK_COMPANIES.map(s => {
-        const algo = evaluateStockAlgorithm(s);
-        return { ...s, algorithmicAssessment: algo };
-      });
+    let companies = compRes.data;
+    if (compRes.error || !companies || companies.length === 0) {
+      // Fallback query if .or syntax or status column is in transition
+      const { data: fallbackCompanies, error: fbErr } = await supabase
+        .from('companies')
+        .select('*')
+        .order('ticker', { ascending: true });
+
+      if (fbErr || !fallbackCompanies || fallbackCompanies.length === 0) {
+        return MOCK_COMPANIES.map(s => {
+          const algo = evaluateStockAlgorithm(s);
+          return { ...s, algorithmicAssessment: algo };
+        });
+      }
+      companies = fallbackCompanies.filter(c => c.status !== 'DELISTED');
     }
 
-    // Gate: ACTIVE live prices only
-    const { data: prices } = await supabase
+    // 2. Fetch live prices with proper v2 ordering
+    let priceRes = await supabase
       .from('live_prices')
       .select('*')
-      .eq('status', 'ACTIVE');
+      .or('status.eq.ACTIVE,status.is.null')
+      .order('ticker', { ascending: true });
+
+    let prices = priceRes.data;
+    if (priceRes.error || !prices) {
+      const { data: fallbackPrices } = await supabase
+        .from('live_prices')
+        .select('*')
+        .order('ticker', { ascending: true });
+      prices = fallbackPrices || [];
+    }
 
     const priceMap = {};
     if (prices) {
@@ -169,6 +189,31 @@ export async function fetchTopScoringStocks() {
       const algo = evaluateStockAlgorithm(s);
       return { ...s, algorithmicAssessment: algo };
     });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchLivePrices — retrieve live market price feed with proper v2 order
+// ─────────────────────────────────────────────────────────────────────────────
+export async function fetchLivePrices() {
+  if (!isSupabaseConfigured) return [];
+  try {
+    const { data, error } = await supabase
+      .from('live_prices')
+      .select('*')
+      .or('status.eq.ACTIVE,status.is.null')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      const { data: fallbackData } = await supabase
+        .from('live_prices')
+        .select('*')
+        .order('ticker', { ascending: true });
+      return fallbackData || [];
+    }
+    return data || [];
+  } catch (e) {
+    return [];
   }
 }
 
@@ -332,9 +377,13 @@ export function subscribeToLivePrices(onPriceUpdate) {
     .channel('live_prices_realtime')
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'live_prices', filter: 'status=eq.ACTIVE' },
+      { event: '*', schema: 'public', table: 'live_prices' },
       payload => {
-        if (onPriceUpdate) onPriceUpdate(payload.new);
+        if (payload && payload.new) {
+          if (!payload.new.status || payload.new.status === 'ACTIVE') {
+            if (onPriceUpdate) onPriceUpdate(payload.new);
+          }
+        }
       }
     )
     .subscribe();
