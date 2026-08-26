@@ -8,16 +8,19 @@ import {
   ChevronLeft, ChevronRight, LayoutGrid, Table2, Eye,
   ArrowUpRight, AlertTriangle, Compass, Target, Gauge, Zap,
   Info, CheckCircle, HelpCircle, Wallet, ShieldAlert, Clock, TrendingDown as TrendDown,
-  SlidersHorizontal
+  SlidersHorizontal, History, Radio, RefreshCw, Calculator, Globe, Newspaper
 } from 'lucide-react';
 import { evaluateStockAlgorithm } from '../services/scoringAlgorithm';
 import { applyFilters, DEFAULT_FILTERS } from '../services/filterEngine';
+import { getBacktestStatsForStock } from '../services/backtestEngine';
+import { getMacroSentiment } from '../services/geminiService';
 import { StockFilterBar } from './StockFilterBar';
 import { DelistedBanner } from './DelistedBanner';
+import { PeerComparison } from './PeerComparison';
 
-export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, onAddToWatchlist }) {
+export function StockOverview({ stocks = [], selectedStock, onSelectStock, onOpenAI, onAddToWatchlist }) {
   const stock = selectedStock || stocks[0];
-  const algo = stock.algorithmicAssessment || evaluateStockAlgorithm(stock);
+  const algo = stock?.algorithmicAssessment || evaluateStockAlgorithm(stock);
   const flag = algo?.flag || {
     tier: 'GREEN',
     label: 'Strong Growth Buy',
@@ -32,7 +35,20 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
   const [showTooltip, setShowTooltip] = useState(false);
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
+  const [showBacktestLogs, setShowBacktestLogs] = useState(false);
+  
+  // Custom user target & stop-loss state
+  const [customTarget, setCustomTarget] = useState('');
+  const [customStopLoss, setCustomStopLoss] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(false);
+
   const carouselRef = useRef(null);
+
+  // Derive historical backtesting metrics for the selected stock
+  const backtestStats = useMemo(() => getBacktestStatsForStock(stock), [stock]);
+
+  // Derive macro & news sentiment indicators
+  const macroSentiment = useMemo(() => getMacroSentiment(stock), [stock]);
 
   // Apply filter pipeline to full stock list
   const displayedStocks = useMemo(
@@ -52,17 +68,32 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
     { name: 'Risk Score',        score: algo?.subScores?.risk        || 70, icon: ShieldCheck, color: '#fbbf24', barColor: '#f59e0b' }
   ];
 
-  const price = Number(stock.price || 0);
-  const open = Number(stock.open_price || stock.price || 0);
-  const high = Number(stock.day_high || (price * 1.01));
-  const low = Number(stock.day_low || (price * 0.99));
-  const ldcp = Number(stock.previous_close || (price - (stock.change || 0)));
-  const volume = Number(typeof stock.volume === 'string' ? stock.volume.replace(/,/g, '') : (stock.volume || 1000000));
-  const high52 = Number(stock.fifty_two_week_high || (price * 1.25));
-  const low52 = Number(stock.fifty_two_week_low || (price * 0.75));
+  const price = Number(stock?.price || 0);
+  const open = Number(stock?.open_price || stock?.price || 0);
+  const high = Number(stock?.day_high || (price * 1.01));
+  const low = Number(stock?.day_low || (price * 0.99));
+  const ldcp = Number(stock?.previous_close || (price - (stock?.change || 0)));
+  const volume = Number(typeof stock?.volume === 'string' ? stock.volume.replace(/,/g, '') : (stock?.volume || 1000000));
+  const high52 = Number(stock?.fifty_two_week_high || (price * 1.25));
+  const low52 = Number(stock?.fifty_two_week_low || (price * 0.75));
 
   const dayRangePos = high > low ? Math.min(100, Math.max(0, Math.round(((price - low) / (high - low)) * 100))) : 50;
   const yearRangePos = high52 > low52 ? Math.min(100, Math.max(0, Math.round(((price - low52) / (high52 - low52)) * 100))) : 50;
+
+  // ─── Dynamic Target & Stop-Loss (Auto vs Custom) ───────────────────────────
+  const activeTargetPrice = isCustomMode && Number(customTarget) > 0
+    ? Number(customTarget)
+    : (algo?.tradeStrategy?.targetPrice || price * 1.12);
+
+  const activeStopLoss = isCustomMode && Number(customStopLoss) > 0
+    ? Number(customStopLoss)
+    : (algo?.tradeStrategy?.stopLoss || price * 0.93);
+
+  const customUpsidePKR = activeTargetPrice > price ? activeTargetPrice - price : 0;
+  const customDownsidePKR = price > activeStopLoss ? price - activeStopLoss : 0;
+  const dynamicRR = customDownsidePKR > 0.01 ? Number((customUpsidePKR / customDownsidePKR).toFixed(2)) : 0;
+  const dynamicUpsidePct = price > 0 ? Number(((customUpsidePKR / price) * 100).toFixed(1)) : 0;
+  const dynamicDownsidePct = price > 0 ? Number(((customDownsidePKR / price) * 100).toFixed(1)) : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -170,7 +201,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
             ) : displayedStocks.map((item) => {
               const itemAlgo = item.algorithmicAssessment || evaluateStockAlgorithm(item);
               const itemFlag = itemAlgo?.flag;
-              const isSelected = item.ticker === stock.ticker;
+              const isSelected = item.ticker === stock?.ticker;
 
               return (
                 <div
@@ -242,7 +273,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
                 ) : displayedStocks.map((item, idx) => {
                   const itemAlgo = item.algorithmicAssessment || evaluateStockAlgorithm(item);
                   const itemFlag = itemAlgo?.flag;
-                  const isSelected = item.ticker === stock.ticker;
+                  const isSelected = item.ticker === stock?.ticker;
 
                   return (
                     <tr
@@ -308,11 +339,10 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       </div>
 
       {/* ================================================================
-          2. ACTIVE HERO PANEL WITH 3-TIER FLAG & EXPLICIT RATIONALE
+          2. ACTIVE HERO PANEL WITH 3-TIER FLAG & ACTION SIGNALS
              (or DELISTED BANNER if security is gated)
       ================================================================ */}
-      {stock.status && stock.status !== 'ACTIVE' ? (
-        /* Delisted / Suspended Security — Show banner, hide all trade actions */
+      {stock?.status && stock?.status !== 'ACTIVE' ? (
         <DelistedBanner
           ticker={stock.ticker}
           delistInfo={{
@@ -340,9 +370,10 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               </span>
             </div>
 
-            {/* Action Signal Badge + RVOL + Breakout Context */}
+            {/* Action Signal Badge + RVOL + Breakout Context + Backtest Accuracy */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
-              {/* Action Signal — R:R Gated */}
+              
+              {/* Action Signal */}
               {algo?.actionSignal && (
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: '7px',
@@ -356,7 +387,28 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
                     {algo.actionSignal.label}
                   </span>
                   <span style={{ fontSize: '10px', color: algo.actionSignal.color, opacity: 0.7, fontWeight: 600 }}>
-                    R:R {algo.tradeStrategy?.rrRatio || 0}:1
+                    R:R {dynamicRR}:1
+                  </span>
+                </div>
+              )}
+
+              {/* 1-Year Historical Hit Rate Badge */}
+              {backtestStats && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                  padding: '5px 11px', borderRadius: '8px', cursor: 'pointer'
+                }}
+                onClick={() => setShowBacktestLogs(!showBacktestLogs)}
+                title="Click to view historical backtest signals"
+                >
+                  <History style={{ width: '12px', height: '12px', color: '#818cf8' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#c7d2fe' }}>
+                    1Y Hit Rate: <b style={{ color: '#34d399' }}>{backtestStats.hitRate}%</b>
+                  </span>
+                  <span style={{ fontSize: '9px', color: '#818cf8', fontWeight: 700 }}>
+                    ({backtestStats.winCount}/{backtestStats.totalSignals} Wins)
                   </span>
                 </div>
               )}
@@ -376,22 +428,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
                 </div>
               )}
 
-              {/* Breakout Context Tag */}
-              {algo?.breakoutContext && (
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  background: `${algo.breakoutContext.color}12`,
-                  border: `1px solid ${algo.breakoutContext.color}40`,
-                  padding: '5px 10px', borderRadius: '8px'
-                }}>
-                  <Zap style={{ width: '11px', height: '11px', color: algo.breakoutContext.color }} />
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: algo.breakoutContext.color }}>
-                    {algo.breakoutContext.label}
-                  </span>
-                </div>
-              )}
-
-              {/* 3-Tier flag (secondary) */}
+              {/* 3-Tier flag */}
               <div
                 onClick={() => setShowTooltip(!showTooltip)}
                 style={{
@@ -408,15 +445,46 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               </div>
             </div>
 
-            {/* Expanded Explanatory Box (Why Flag Was Assigned) */}
+            {/* Backtest Historical Signal Drawer */}
+            {showBacktestLogs && backtestStats && (
+              <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px 18px', borderRadius: '12px', marginTop: '12px', maxWidth: '680px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#818cf8', fontWeight: 800, fontSize: '12px' }}>
+                    <History style={{ width: '14px', height: '14px' }} />
+                    Historical Backtest Performance Log (+14D & +30D Outcomes)
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }}>
+                    Avg +14D: {backtestStats.avgReturn14D} | +30D: {backtestStats.avgReturn30D}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginTop: '8px' }}>
+                  {backtestStats.historyLog.map((log, i) => (
+                    <div key={i} style={{ background: '#0f172a', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{log.date}</span>
+                        <span style={{ fontWeight: 800, color: log.outcome === 'WIN' ? '#10b981' : '#f43f5e' }}>{log.outcome}</span>
+                      </div>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff', marginTop: '2px' }}>
+                        PKR {log.entryPrice} → {log.exitPrice}
+                      </div>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: log.outcome === 'WIN' ? '#10b981' : '#f43f5e', marginTop: '1px' }}>
+                        {log.returnPct} ({log.holdingDays}D)
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Explanatory Tooltip Box */}
             {showTooltip && (
-              <div style={{ background: '#1e293b', border: `1px solid ${flag.border}`, padding: '14px 18px', borderRadius: '12px', marginTop: '12px', maxWidth: '620px', animation: 'fadeIn 0.2s ease' }}>
+              <div style={{ background: '#1e293b', border: `1px solid ${flag.border}`, padding: '14px 18px', borderRadius: '12px', marginTop: '12px', maxWidth: '620px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: flag.color, fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>
                   <HelpCircle style={{ width: '15px', height: '15px' }} />
-                  Algorithmic Flag Assessment Reasoning:
+                  Algorithmic Flag Assessment:
                 </div>
                 <p style={{ fontSize: '12px', color: '#e2e8f0', margin: 0, lineHeight: 1.5 }}>
-                  {flag.summary} This stock was evaluated across normalized Sector P/E multiples ({stock.pe_ratio || 6.5}x), ROE profit efficiency ({stock.roe || 18}%), Dividend Yield ({stock.dividend_yield || 5}%), and 24-hour liquidity volume ({Number(volume).toLocaleString()} shares).
+                  {flag.summary} Evaluated on P/E ({stock.pe_ratio || 'N/A'}x), ROE ({stock.roe || 'N/A'}%), Dividend ({stock.dividend_yield || 0}%), and 24H volume ({Number(volume).toLocaleString()} shares).
                 </p>
               </div>
             )}
@@ -553,20 +621,90 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       )} {/* end of ternary: ACTIVE hero panel vs DelistedBanner */}
 
       {/* ================================================================
-          3. TRADE STRATEGY & CAPITAL ALLOCATION PANEL
+          3. TRADE STRATEGY, CAPITAL ALLOCATION & CUSTOM RISK CALCULATOR
       ================================================================ */}
       <div style={{ background: '#0f172a', padding: '20px 24px', borderRadius: '20px', border: '1px solid #1e293b' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid #1e293b' }}>
-          <Target style={{ width: '16px', height: '16px', color: '#6366f1' }} />
-          <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-            Trade Strategy & Capital Allocation
-          </h3>
-          {algo?.isPennyStock && (
-            <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '9999px', background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.4)' }}>
-              ⚠️ SPECULATIVE
-            </span>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid #1e293b', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Target style={{ width: '16px', height: '16px', color: '#6366f1' }} />
+            <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+              Trade Strategy & Risk-Reward Allocation
+            </h3>
+            {algo?.isPennyStock && (
+              <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '9999px', background: 'rgba(249,115,22,0.15)', color: '#fb923c', border: '1px solid rgba(249,115,22,0.4)' }}>
+                ⚠️ SPECULATIVE
+              </span>
+            )}
+          </div>
+
+          {/* Calculator Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              onClick={() => {
+                setIsCustomMode(!isCustomMode);
+                if (!isCustomMode) {
+                  setCustomTarget(String(activeTargetPrice));
+                  setCustomStopLoss(String(activeStopLoss));
+                }
+              }}
+              style={{
+                background: isCustomMode ? 'rgba(99,102,241,0.2)' : '#1e293b',
+                border: isCustomMode ? '1px solid rgba(99,102,241,0.5)' : '1px solid #334155',
+                color: isCustomMode ? '#a5b4fc' : '#94a3b8',
+                padding: '4px 10px', borderRadius: '8px', cursor: 'pointer',
+                fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              <Calculator style={{ width: '13px', height: '13px' }} />
+              {isCustomMode ? 'Using Custom Risk Targets' : 'Custom Target Calculator'}
+            </button>
+
+            {isCustomMode && (
+              <button
+                onClick={() => {
+                  setCustomTarget('');
+                  setCustomStopLoss('');
+                  setIsCustomMode(false);
+                }}
+                style={{
+                  background: '#1e293b', border: '1px solid #334155', color: '#f87171',
+                  padding: '4px 8px', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: 700
+                }}
+              >
+                Reset Auto
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Custom Input Drawer */}
+        {isCustomMode && (
+          <div style={{ display: 'flex', gap: '14px', marginBottom: '16px', background: 'rgba(99,102,241,0.06)', border: '1px dashed rgba(99,102,241,0.3)', padding: '12px 16px', borderRadius: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: '#a5b4fc' }}>Custom Target (PKR):</label>
+              <input
+                type="number"
+                value={customTarget}
+                onChange={e => setCustomTarget(e.target.value)}
+                style={{ background: '#1e293b', border: '1px solid #334155', color: '#ffffff', padding: '5px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, width: '110px', outline: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: '#fca5a5' }}>Custom Stop-Loss (PKR):</label>
+              <input
+                type="number"
+                value={customStopLoss}
+                onChange={e => setCustomStopLoss(e.target.value)}
+                style={{ background: '#1e293b', border: '1px solid #334155', color: '#ffffff', padding: '5px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, width: '110px', outline: 'none' }}
+              />
+            </div>
+
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+              Recalculating Risk/Reward & Position allocation live...
+            </span>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
           
@@ -577,10 +715,10 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resistance Target</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#a5b4fc' }}>
-              PKR {algo?.tradeStrategy?.targetPrice?.toLocaleString() || '—'}
+              PKR {Number(activeTargetPrice).toLocaleString()}
             </div>
             <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, marginTop: '3px' }}>
-              +{algo?.tradeStrategy?.upsidePct || 0}% Upside
+              +{dynamicUpsidePct}% Upside
             </div>
           </div>
 
@@ -591,10 +729,10 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stop-Loss Level</span>
             </div>
             <div style={{ fontSize: '20px', fontWeight: 900, color: '#fca5a5' }}>
-              PKR {algo?.tradeStrategy?.stopLoss?.toLocaleString() || '—'}
+              PKR {Number(activeStopLoss).toLocaleString()}
             </div>
             <div style={{ fontSize: '11px', color: '#f43f5e', fontWeight: 700, marginTop: '3px' }}>
-              -{algo?.tradeStrategy?.downsidePct || 0}% Max Downside
+              -{dynamicDownsidePct}% Max Downside
             </div>
           </div>
 
@@ -604,11 +742,11 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
               <Gauge style={{ width: '13px', height: '13px', color: '#22d3ee' }} />
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Risk / Reward</span>
             </div>
-            <div style={{ fontSize: '20px', fontWeight: 900, color: (algo?.tradeStrategy?.rrRatio >= 1.5) ? '#34d399' : (algo?.tradeStrategy?.rrRatio >= 1.0) ? '#fbbf24' : '#f87171' }}>
-              {algo?.tradeStrategy?.rrRatio >= 1 ? algo?.tradeStrategy?.rrRatio : '< 1'}:1
+            <div style={{ fontSize: '20px', fontWeight: 900, color: (dynamicRR >= 2.0) ? '#10b981' : (dynamicRR >= 1.2) ? '#fbbf24' : '#f87171' }}>
+              {dynamicRR >= 1 ? dynamicRR : '< 1'}:1
             </div>
             <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginTop: '3px' }}>
-              {algo?.tradeStrategy?.rrRatio >= 1.5 ? '✅ Favourable Setup' : algo?.tradeStrategy?.rrRatio >= 1.0 ? '⚖️ Marginal Setup' : '❌ Unfavourable Setup'}
+              {dynamicRR >= 2.0 ? '🚀 High Conviction' : dynamicRR >= 1.2 ? '⚖️ Moderate Setup' : '❌ Wait for Pullback'}
             </div>
           </div>
 
@@ -616,7 +754,7 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
           <div style={{ background: 'rgba(16, 185, 129, 0.08)', padding: '14px 16px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
               <Wallet style={{ width: '13px', height: '13px', color: '#34d399' }} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Portfolio Allocation</span>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Portfolio Sizing</span>
             </div>
             <div style={{ fontSize: '14px', fontWeight: 800, color: '#6ee7b7', lineHeight: 1.3 }}>
               {algo?.tradeStrategy?.allocation || '—'}
@@ -730,7 +868,51 @@ export function StockOverview({ stocks, selectedStock, onSelectStock, onOpenAI, 
       </div>
 
       {/* ================================================================
-          5. 6-MONTH CHART & ALGORITHMIC SUB-SCORE BREAKDOWN
+          5. MACRO & GEMINI AI SENTIMENT INDICATOR
+      ================================================================ */}
+      {macroSentiment && (
+        <div style={{ background: '#0f172a', padding: '20px 24px', borderRadius: '20px', border: '1px solid #1e293b' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px', paddingBottom: '12px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Globe style={{ width: '16px', height: '16px', color: '#38bdf8' }} />
+              <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                Macro & Market Sentiment Indicator
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: macroSentiment.sentimentColor, background: macroSentiment.sentimentBg, padding: '3px 10px', borderRadius: '9999px', border: `1px solid ${macroSentiment.sentimentColor}44` }}>
+                {macroSentiment.sentimentIcon} {macroSentiment.sentimentLabel} ({macroSentiment.sentimentScore}/100)
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+            {macroSentiment.macroFactors.map((fac, i) => (
+              <div key={i} style={{ background: '#090d16', padding: '12px 14px', borderRadius: '10px', border: '1px solid #1e293b' }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', marginBottom: '4px' }}>
+                  {fac.title}
+                </div>
+                <p style={{ fontSize: '12px', color: '#cbd5e1', margin: 0, lineHeight: 1.45 }}>
+                  {fac.detail}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          6. SECTOR PEER COMPARISON MATRIX
+      ================================================================ */}
+      <PeerComparison
+        selectedStock={stock}
+        allStocks={stocks}
+        onSelectStock={onSelectStock}
+      />
+
+      {/* ================================================================
+          7. 6-MONTH CHART & ALGORITHMIC SUB-SCORE BREAKDOWN
       ================================================================ */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
         
