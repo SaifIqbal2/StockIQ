@@ -5,6 +5,8 @@ import { PortfolioTracker } from './components/PortfolioTracker';
 import { WatchlistManager } from './components/WatchlistManager';
 import { AIAnalystModal } from './components/AIAnalystModal';
 import { AuthModal } from './components/AuthModal';
+import { BackgroundScraper } from './components/BackgroundScraper';
+import { StockDashboard } from './components/StockDashboard';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { 
   fetchTopScoringStocks, 
@@ -129,6 +131,7 @@ export function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#030712', color: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
+      <BackgroundScraper />
       
       {/* Top Navigation */}
       <Navbar
@@ -177,13 +180,16 @@ export function App() {
         ) : (
           <>
             {activeTab === 'stocks' && (
-              <StockOverview
-                stocks={filteredStocks}
-                selectedStock={selectedStock}
-                onSelectStock={setSelectedStock}
-                onOpenAI={() => setIsAIOpen(true)}
-                onAddToWatchlist={handleAddToWatchlist}
-              />
+              <>
+                <StockDashboard />
+                <StockOverview
+                  stocks={filteredStocks}
+                  selectedStock={selectedStock}
+                  onSelectStock={setSelectedStock}
+                  onOpenAI={() => setIsAIOpen(true)}
+                  onAddToWatchlist={handleAddToWatchlist}
+                />
+              </>
             )}
 
             {activeTab === 'portfolio' && (

@@ -3,8 +3,13 @@ globalThis.WebSocket = WebSocket;
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://uzgarjeukwulgptocior.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://mycjzlostkhzionrdttz.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseKey) {
+  console.error('Set SUPABASE_SERVICE_ROLE_KEY before syncing market data.');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false },

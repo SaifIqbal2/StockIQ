@@ -5,8 +5,8 @@ import urllib.request
 from datetime import datetime
 
 # Supabase Credentials
-SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL", "https://uzgarjeukwulgptocior.supabase.co")
-SUPABASE_KEY = os.environ.get("VITE_SUPABASE_ANON_KEY", "sb_publishable_FfAza3CBa1myd-RIItJyFg_vuu6XZH-")
+SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL", "https://mycjzlostkhzionrdttz.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 # Target Core PSX Tickers with Real Baseline Data
 TICKERS_CONFIG = [
@@ -69,6 +69,10 @@ def scrape_psx_ticker(ticker_symbol, default_price):
     }
 
 def upsert_to_supabase(records):
+    if not SUPABASE_KEY:
+        print("Set SUPABASE_SERVICE_ROLE_KEY before syncing market data.")
+        return
+
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
